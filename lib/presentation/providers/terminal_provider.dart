@@ -106,7 +106,7 @@ class TerminalNotifier extends StateNotifier<TerminalState> {
 
   void sendCommand(String cmd) {
     if (!state.connected) return;
-    state = state.copyWith(lines: [...state.lines, '\$ $cmd']);
+    // PTY（bash）会把输入回显到输出流，本地不再重复回显，否则命令显示两遍
     _ref.read(wsClientProvider).send({'type': 'input', 'data': '$cmd\r'});
   }
 
