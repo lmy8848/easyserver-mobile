@@ -3,16 +3,17 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
-import 'package:media_kit/media_kit.dart';
-import 'package:media_kit_video/media_kit_video.dart';
+import 'package:window_manager/window_manager.dart';
 
 import 'adb_service.dart';
-
-const _mirrorPort = 28213;
+import 'pair_wizard.dart';
+import 'win32_embed.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  if (Platform.isWindows) MediaKit.ensureInitialized();
+  if (Platform.isWindows) {
+    windowManager.ensureInitialized();
+  }
   runApp(const DevBoardApp());
 }
 
@@ -39,10 +40,21 @@ class _DevBoardPageState extends State<DevBoardPage> {
   String? _serial;
   List<DeviceEntry> _devices = [];
   String? _adbError;
+  int? _windowHandle;
 
   @override
   void initState() {
     super.initState();
+    _init();
+  }
+
+  Future<void> _init() async {
+    // 窗口就绪后取 HWND（Win32 FindWindow 按 exe 名），供 scrcpy 子窗口嵌入定位
+    await windowManager.waitUntilReadyToShow(null, () {});
+    await Future<void>.delayed(const Duration(milliseconds: 500));
+    final hwnd = Win32Embed.findWindow('devboard');
+    if (!mounted) return;
+    setState(() => _windowHandle = hwnd);
     _refreshDevices();
   }
 
@@ -114,6 +126,16 @@ class _DevBoardPageState extends State<DevBoardPage> {
         title: const Text('DevBoard · 移动端开发脚手架'),
         actions: [
           IconButton(
+            tooltip: '无线配对向导（首次配对）',
+            icon: const Icon(Icons.qr_code_scanner),
+            onPressed: () {
+              showDialog(
+                context: context,
+                builder: (_) => const PairWizardDialog(),
+              );
+            },
+          ),
+          IconButton(
             tooltip: '连接无线设备',
             icon: const Icon(Icons.add_link),
             onPressed: _connectDialog,
@@ -143,7 +165,13 @@ class _DevBoardPageState extends State<DevBoardPage> {
             )
           : Row(
               children: [
-                Expanded(flex: 3, child: ScreenPanel(serial: _serial)),
+                Expanded(
+                  flex: 3,
+                  child: ScreenPanel(
+                    serial: _serial,
+                    devboardHwnd: _windowHandle,
+                  ),
+                ),
                 const VerticalDivider(width: 1),
                 Expanded(
                   flex: 2,
@@ -155,13 +183,18 @@ class _DevBoardPageState extends State<DevBoardPage> {
   }
 }
 
-/// 屏幕面板：默认 scrcpy 实时镜像（H.264 串流内嵌渲染），
-/// 可切换为轻量抓帧轮询（scrcpy 不可用时的降级方案）。
+/// 屏幕面板：默认 scrcpy 实时镜像（GUI 模式窗口 Win32 SetParent 内嵌，
+/// 鼠标键盘由 scrcpy 原生处理），可切换轻量抓帧轮询。
 enum ScreenMode { mirror, snapshot }
 
 class ScreenPanel extends StatefulWidget {
   final String? serial;
-  const ScreenPanel({super.key, required this.serial});
+  final int? devboardHwnd;
+  const ScreenPanel({
+    super.key,
+    required this.serial,
+    required this.devboardHwnd,
+  });
 
   @override
   State<ScreenPanel> createState() => _ScreenPanelState();
@@ -169,19 +202,17 @@ class ScreenPanel extends StatefulWidget {
 
 class _ScreenPanelState extends State<ScreenPanel> {
   ScreenMode _mode = ScreenMode.mirror;
-
-  // ── mirror（scrcpy → mkv over TCP → media_kit）──
-  Player? _player;
-  VideoController? _videoController;
-  Process? _scrcpyProc;
-  StreamSubscription? _videoParamsSub;
-  Size _videoSize = const Size(1080, 2400);
-  bool _mirrorStarting = false;
-  String? _mirrorError;
   Offset? _dragStart;
 
+  // ── mirror（scrcpy GUI 窗口内嵌）──
+  Process? _scrcpyProc;
+  ScrcpyEmbedSession? _session;
+  bool _mirrorStarting = false;
+  String? _mirrorError;
+  final GlobalKey _canvasKey = GlobalKey();
+
   // ── snapshot（抓帧轮询）──
-  Uint8List? _frameBytes;
+  List<int>? _frameBytes;
   Size _screenSize = const Size(1080, 2400);
   bool _auto = true;
   bool _capturing = false;
@@ -194,142 +225,60 @@ class _ScreenPanelState extends State<ScreenPanel> {
   @override
   void initState() {
     super.initState();
-    _startMirror();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_mode == ScreenMode.mirror) _startMirror();
+    });
   }
 
   @override
   void didUpdateWidget(covariant ScreenPanel old) {
     super.didUpdateWidget(old);
     if (old.serial != widget.serial) {
-      _restartMirror();
       _frameBytes = null;
-      if (_mode == ScreenMode.snapshot) _capture();
+      if (_mode == ScreenMode.mirror) {
+        _restartMirror();
+      } else {
+        _capture();
+      }
+    }
+    if (old.devboardHwnd != widget.devboardHwnd &&
+        widget.devboardHwnd != null) {
+      _session?.setDevboardHwnd(widget.devboardHwnd!);
     }
   }
 
-  // ══════════ scrcpy 实时镜像 ══════════
-
-  ServerSocket? _mirrorServer;
-  Socket? _mirrorClient;
-  final _backlog = <List<int>>[];
+  // ══════════ scrcpy GUI 内嵌 ══════════
 
   Future<void> _startMirror() async {
-    if (widget.serial == null || _mirrorStarting) return;
+    if (widget.serial == null ||
+        _mirrorStarting ||
+        widget.devboardHwnd == null) {
+      return;
+    }
     _mirrorStarting = true;
     await _stopMirror();
     if (!mounted) {
       _mirrorStarting = false;
       return;
     }
-    setState(() {
-      _mirrorError = null;
-      _videoSize = const Size(1080, 2400);
-    });
+    setState(() => _mirrorError = null);
 
-    final player = Player();
-    final controller = VideoController(player);
-    setState(() {
-      _player = player;
-      _videoController = controller;
-    });
-
-    _videoParamsSub = player.stream.videoParams.listen((p) {
-      if (p.w != null && p.h != null && mounted) {
-        setState(() => _videoSize = Size(p.w!.toDouble(), p.h!.toDouble()));
-      }
-    });
-    player.stream.error.listen((msg) {
-      debugPrint('[player-err] $msg');
-      if (mounted) setState(() => _mirrorError = '播放器: $msg');
-    });
-    player.stream.log.listen((e) {
-      if (e.level == 'error' || e.level == 'warn') {
-        debugPrint('[mpv:${e.prefix}] ${e.text}');
-      }
-    });
+    final title = 'DevBoard_Mirror_${DateTime.now().millisecondsSinceEpoch}';
+    final session = ScrcpyEmbedSession(title);
+    session.setDevboardHwnd(widget.devboardHwnd!);
+    _session = session;
 
     try {
-      // 本地 TCP 中转：scrcpy 把 mkv 写到 stdout，DevBoard 转发给 media_kit
-      // （scrcpy 的 avio 不支持 listen URL，stdout 由我们全权接管）
-      _mirrorServer = await ServerSocket.bind('127.0.0.1', _mirrorPort);
-      _mirrorServer!.listen((sock) {
-        _mirrorClient = sock;
-        for (final b in _backlog) {
-          sock.add(b);
-        }
-        _backlog.clear();
-      });
-
       final proc = await Process.start('bin/scrcpy/scrcpy.exe', [
         '-s',
         widget.serial!,
-        '--no-window',
         '--no-audio',
-        '--record=-',
-        '--record-format=mkv',
+        '--window-borderless',
+        '--window-title=$title',
         '--max-fps=30',
         '--video-bit-rate=8M',
       ], mode: ProcessStartMode.normal);
       _scrcpyProc = proc;
-      // 等到 scrcpy 真正吐出 mkv 头（EBML 魔数）再启动播放器，
-      // 否则 mpv 探针在编码协商期连上会因无数据报 format 错误
-      final headerReady = Completer<void>();
-      proc.stdout.listen((chunk) {
-        if (!headerReady.isCompleted) {
-          for (
-            var i = 0;
-            !headerReady.isCompleted && i + 3 < chunk.length;
-            i++
-          ) {
-            if (chunk[i] == 0x1A &&
-                chunk[i + 1] == 0x45 &&
-                chunk[i + 2] == 0xDF &&
-                chunk[i + 3] == 0xA3) {
-              headerReady.complete();
-            }
-          }
-        }
-        final c = _mirrorClient;
-        if (c != null) {
-          try {
-            c.add(chunk);
-          } catch (_) {
-            // 播放器断开（如切模式/退出），数据转入暂存等待重连
-            _backlog.add(chunk);
-            while (_backlog.length > 512) {
-              _backlog.removeAt(0);
-            }
-            _mirrorClient = null;
-          }
-        } else {
-          // 播放器尚未连上：暂存，超限丢头部防内存膨胀
-          _backlog.add(chunk);
-          while (_backlog.length > 512) {
-            _backlog.removeAt(0);
-          }
-        }
-      });
-      try {
-        await headerReady.future.timeout(
-          const Duration(seconds: 10),
-          onTimeout: () {
-            throw Exception('scrcpy 10s 内未输出视频流');
-          },
-        );
-      } catch (e) {
-        // 实时镜像建立失败（设备端无流等）：自动回退抓帧轮询模式并提示
-        proc.kill();
-        _scrcpyProc = null;
-        if (mounted) {
-          setState(() {
-            _mode = ScreenMode.snapshot;
-            _captureError = '实时镜像建立失败（$e），已回退抓帧模式';
-          });
-          _capture();
-          _schedule();
-        }
-        return;
-      }
       proc.stderr.cast<List<int>>().transform(systemEncoding.decoder).listen((
         line,
       ) {
@@ -343,12 +292,22 @@ class _ScreenPanelState extends State<ScreenPanel> {
           }
         }),
       );
-      // mpv 默认拒绝网络 URL（unsafe playlist），放行本地回环的镜像流
-      await (player.platform as dynamic).setProperty(
-        'load-unsafe-playlists',
-        'yes',
-      );
-      await player.open(Media('tcp://127.0.0.1:$_mirrorPort'));
+
+      // 等窗口出现并挂为子窗口（12s 超时）
+      final attached = await session.attach();
+      if (!mounted) return;
+      if (!attached) {
+        setState(() => _mirrorError = '未找到 scrcpy 镜像窗口（进程可能启动失败）');
+        proc.kill();
+        return;
+      }
+      session.startWatchdog(() {
+        if (mounted) {
+          setState(() => _mirrorError = '镜像窗口已关闭');
+        }
+      });
+      // 立即按当前画布布局一次
+      WidgetsBinding.instance.addPostFrameCallback((_) => _syncLayout());
     } catch (e) {
       if (mounted) setState(() => _mirrorError = '实时镜像启动失败: $e');
     } finally {
@@ -356,25 +315,30 @@ class _ScreenPanelState extends State<ScreenPanel> {
     }
   }
 
-  Future<void> _stopMirror() async {
-    _videoParamsSub?.cancel();
-    _videoParamsSub = null;
-    _scrcpyProc?.kill();
-    _scrcpyProc = null;
-    _mirrorClient?.destroy();
-    _mirrorClient = null;
-    _mirrorServer?.close();
-    _mirrorServer = null;
-    _backlog.clear();
-    final player = _player;
-    _player = null;
-    _videoController = null;
-    await player?.dispose();
-  }
-
   Future<void> _restartMirror() async {
     await _stopMirror();
     if (mounted && _mode == ScreenMode.mirror) await _startMirror();
+  }
+
+  Future<void> _stopMirror() async {
+    _session?.dispose();
+    _session = null;
+    _scrcpyProc?.kill();
+    _scrcpyProc = null;
+  }
+
+  /// 把 scrcpy 子窗口移动到 Flutter 画布区域（布局变化时由框架回调）
+  void _syncLayout() {
+    final box = _canvasKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null || !box.attached) return;
+    final topLeft = box.localToGlobal(Offset.zero);
+    final size = box.size;
+    _session?.layout(
+      logicalX: topLeft.dx,
+      logicalY: topLeft.dy,
+      logicalW: size.width,
+      logicalH: size.height,
+    );
   }
 
   // ══════════ 抓帧轮询（降级模式）══════════
@@ -402,7 +366,7 @@ class _ScreenPanelState extends State<ScreenPanel> {
       final bytes = await AdbService.instance.screencap(widget.serial);
       if (!mounted) return;
       setState(() {
-        _frameBytes = Uint8List.fromList(bytes);
+        _frameBytes = bytes;
         _captureError = null;
       });
       _probeSize();
@@ -437,15 +401,15 @@ class _ScreenPanelState extends State<ScreenPanel> {
     } catch (_) {}
   }
 
-  // ══════════ 操控注入 ══════════
+  // ══════════ 抓帧模式的坐标注入 ══════════
 
-  Offset _toDevice(Offset local, Size displaySize, Size sourceSize) => Offset(
-    (local.dx / displaySize.width * sourceSize.width).round().toDouble(),
-    (local.dy / displaySize.height * sourceSize.height).round().toDouble(),
+  Offset _toDevice(Offset local, Size displaySize) => Offset(
+    (local.dx / displaySize.width * _screenSize.width).round().toDouble(),
+    (local.dy / displaySize.height * _screenSize.height).round().toDouble(),
   );
 
-  Future<void> _tap(Offset local, Size display, Size source) async {
-    final p = _toDevice(local, display, source);
+  Future<void> _tap(Offset local, Size display) async {
+    final p = _toDevice(local, display);
     await AdbService.instance.deviceArgs(widget.serial, [
       'shell',
       'input',
@@ -455,9 +419,9 @@ class _ScreenPanelState extends State<ScreenPanel> {
     ]);
   }
 
-  Future<void> _swipe(Offset from, Offset to, Size display, Size source) async {
-    final a = _toDevice(from, display, source);
-    final b = _toDevice(to, display, source);
+  Future<void> _swipe(Offset from, Offset to, Size display) async {
+    final a = _toDevice(from, display);
+    final b = _toDevice(to, display);
     if ((a.dx - b.dx).abs() < 8 && (a.dy - b.dy).abs() < 8) return;
     await AdbService.instance.deviceArgs(widget.serial, [
       'shell',
@@ -505,7 +469,7 @@ class _ScreenPanelState extends State<ScreenPanel> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final active = _mode == ScreenMode.mirror
-        ? (_videoController != null)
+        ? (_session?.attached ?? false)
         : (_frameBytes != null);
 
     return Padding(
@@ -524,7 +488,6 @@ class _ScreenPanelState extends State<ScreenPanel> {
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-              // 模式切换：实时镜像（默认）/ 抓帧预览
               SegmentedButton<ScreenMode>(
                 segments: const [
                   ButtonSegment(
@@ -592,48 +555,49 @@ class _ScreenPanelState extends State<ScreenPanel> {
                 borderRadius: BorderRadius.circular(8),
                 color: Colors.black12,
               ),
-              clipBehavior: Clip.antiAlias,
+              clipBehavior: Clip.none,
               child: Stack(
                 alignment: Alignment.center,
                 children: [
-                  if (_mode == ScreenMode.mirror)
-                    _buildMirror()
-                  else
+                  // 画布：mirror 模式此区域由 scrcpy 子窗口覆盖（Win32 层），
+                  // 布局变化经 LayoutBuilder 驱动子窗口 MoveWindow 对齐
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      WidgetsBinding.instance.addPostFrameCallback(
+                        (_) => _syncLayout(),
+                      );
+                      return Container(
+                        key: _canvasKey,
+                        width: double.infinity,
+                        height: double.infinity,
+                        color: _mode == ScreenMode.mirror
+                            ? Colors.black
+                            : Colors.transparent,
+                      );
+                    },
+                  ),
+                  if (_mode == ScreenMode.snapshot && _frameBytes != null)
                     _buildSnapshot(context),
-                  if (!active && _mode == ScreenMode.mirror)
+                  if (!active)
                     Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        if (_mirrorStarting || _mirrorError == null)
+                        if (_mode == ScreenMode.mirror &&
+                            (_mirrorStarting || _mirrorError == null))
                           const CircularProgressIndicator(),
                         const SizedBox(height: 12),
                         Text(
                           widget.serial == null
                               ? '未连接设备'
-                              : (_mirrorError ?? '正在建立实时镜像…'),
+                              : widget.devboardHwnd == null
+                              ? '窗口初始化中…'
+                              : (_mirrorStarting
+                                    ? '正在启动实时镜像…'
+                                    : (_mirrorError ?? '正在建立实时镜像…')),
                           style: theme.textTheme.bodySmall,
                           textAlign: TextAlign.center,
                         ),
                       ],
-                    ),
-                  if (_mode == ScreenMode.mirror &&
-                      _mirrorError != null &&
-                      _videoController == null)
-                    Positioned(
-                      bottom: 8,
-                      left: 8,
-                      right: 8,
-                      child: Container(
-                        padding: const EdgeInsets.all(8),
-                        color: Colors.black54,
-                        child: Text(
-                          _mirrorError!,
-                          style: const TextStyle(
-                            color: Colors.orange,
-                            fontSize: 11,
-                          ),
-                        ),
-                      ),
                     ),
                   if (_mode == ScreenMode.snapshot && _captureError != null)
                     Positioned(
@@ -684,40 +648,15 @@ class _ScreenPanelState extends State<ScreenPanel> {
     );
   }
 
-  Widget _buildMirror() {
-    final controller = _videoController;
-    if (controller == null) return const SizedBox.expand();
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final aspect = _videoSize.width / _videoSize.height;
-        var w = constraints.maxWidth;
-        var h = w / aspect;
-        if (h > constraints.maxHeight) {
-          h = constraints.maxHeight;
-          w = h * aspect;
-        }
-        final display = Size(w, h);
-        return GestureDetector(
-          onTapDown: (d) => _tap(d.localPosition, display, _videoSize),
-          onPanStart: (d) => _dragStart = d.localPosition,
-          onPanEnd: (d) {
-            if (_dragStart != null) {
-              _swipe(_dragStart!, d.localPosition, display, _videoSize);
-              _dragStart = null;
-            }
-          },
-          child: SizedBox(
-            width: w,
-            height: h,
-            child: Video(controller: controller, fit: BoxFit.fill),
-          ),
-        );
-      },
-    );
+  // 布局同步：每次构建后把 scrcpy 子窗口对齐画布
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _syncLayout());
   }
 
   Widget _buildSnapshot(BuildContext context) {
-    if (_frameBytes == null) return const SizedBox.expand();
+    final frame = _frameBytes!;
     return LayoutBuilder(
       builder: (context, constraints) {
         final aspect = _screenSize.width / _screenSize.height;
@@ -729,11 +668,11 @@ class _ScreenPanelState extends State<ScreenPanel> {
         }
         final display = Size(w, h);
         return GestureDetector(
-          onTapDown: (d) => _tap(d.localPosition, display, _screenSize),
+          onTapDown: (d) => _tap(d.localPosition, display),
           onPanStart: (d) => _dragStart = d.localPosition,
           onPanEnd: (d) {
             if (_dragStart != null) {
-              _swipe(_dragStart!, d.localPosition, display, _screenSize);
+              _swipe(_dragStart!, d.localPosition, display);
               _dragStart = null;
             }
           },
@@ -741,7 +680,9 @@ class _ScreenPanelState extends State<ScreenPanel> {
             width: w,
             height: h,
             child: Image.memory(
-              _frameBytes!,
+              _frameBytes is Uint8List
+                  ? _frameBytes as Uint8List
+                  : Uint8List.fromList(frame),
               fit: BoxFit.fill,
               gaplessPlayback: true,
             ),
@@ -866,3 +807,6 @@ class _TerminalPanelState extends State<TerminalPanel> {
     );
   }
 }
+
+// PanStart/End 空实现占位（抓帧模式滑动暂未启用）
+// ignore_for_file: unused_element
