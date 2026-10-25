@@ -6,7 +6,9 @@ plugins {
 
 android {
     namespace = "com.example.easyserver_mobile"
-    compileSdk = flutter.compileSdkVersion
+    // permission_handler 最新版 AAR metadata 要求 compileSdk >= 37
+    // （Flutter 默认 36；本机 SDK 已装 platforms;android-37.0 并提供 android-37 目录）
+    compileSdk = 37
     ndkVersion = flutter.ndkVersion
 
     compileOptions {

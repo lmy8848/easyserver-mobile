@@ -56,8 +56,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-            ['仪表盘', '容器', '服务', '终端', '文件'][_currentIndex]),
+        title: Text(['仪表盘', '容器', '服务', '终端', '文件'][_currentIndex]),
         actions: [
           if (authState.sessionExpiring)
             const Padding(
@@ -209,6 +208,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             _drawerItem(Icons.folder, '文件管理', () {
               Navigator.pop(context);
               setState(() => _currentIndex = 3);
+            }),
+            _drawerItem(Icons.lan_outlined, '局域网传文件', () {
+              Navigator.pop(context);
+              context.push('/lanshare');
             }),
             const Divider(),
             _drawerItem(Icons.manage_accounts, '账户与安全', () {

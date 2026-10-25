@@ -25,6 +25,16 @@ class ApiClient {
     _dio.options.baseUrl = '$baseUrl/api';
   }
 
+  /// 会话中令牌失效（401）回调：由 DI 层注入「清令牌 + 回登录页」。
+  /// 登录类接口自身的 401（密码错误等）不触发。
+  void Function()? onUnauthorized;
+
+  static const _authPublicPaths = [
+    '/auth/login',
+    '/auth/verify-totp',
+    '/auth/verify-backup'
+  ];
+
   void _setupInterceptors() {
     _dio.interceptors.add(InterceptorsWrapper(
       onRequest: (options, handler) {
@@ -37,6 +47,12 @@ class ApiClient {
         // 请求失败进运行日志：方法/路径/原因，便于现场排障
         AppLogger.w('请求失败 ${error.requestOptions.method} '
             '${error.requestOptions.path}: ${error.message}');
+        // 会话中令牌失效：清除本地缓存并通知回登录页
+        final path = error.requestOptions.path;
+        final isAuthPublic = _authPublicPaths.any((p) => path.contains(p));
+        if (error.response?.statusCode == 401 && !isAuthPublic) {
+          onUnauthorized?.call();
+        }
         handler.next(error);
       },
     ));
