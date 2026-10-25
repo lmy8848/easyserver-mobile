@@ -69,7 +69,12 @@ class _PairWizardDialogState extends State<PairWizardDialog> {
       _busy = true;
       _status = '正在配对…（弹窗保持打开）';
     });
+    // 配对前先刷新一次端口：mDNS 若发现比输入框更新的端口（弹窗重开过）则采用
     try {
+      final fresh = await _discoverPairingPort();
+      if (fresh != null && mounted) {
+        _portController.text = fresh;
+      }
       final out = await AdbService.instance.raw([
         'pair',
         '192.168.1.10:$port',
@@ -78,9 +83,16 @@ class _PairWizardDialogState extends State<PairWizardDialog> {
       final ok = out.contains('Successfully paired');
       if (!mounted) return;
       if (!ok) {
+        // 10061（连接拒绝）= 弹窗已超时关闭，端口失效。
+        // 重新打开弹窗即可：向导继续轮询 mDNS，新端口会自动填入。
         setState(() {
           _busy = false;
-          _status = '配对失败：$out（弹窗超时后端口/码会刷新，请重开弹窗再试）';
+          _autoFilled = false; // 恢复自动追踪，重开弹窗后自动填新端口
+          _status =
+              '配对失败：$out\n'
+              '配对弹窗有效期约 2 分钟，超时即失效（错误 10061）。\n'
+              '请重新打开「使用配对码配对设备」弹窗，新端口会自动填入，'
+              '再填新的 6 位码立即配对。';
         });
         return;
       }
