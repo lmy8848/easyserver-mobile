@@ -4,9 +4,12 @@ import '../presentation/screens/splash/splash_screen.dart';
 import '../presentation/screens/setup/setup_screen.dart';
 import '../presentation/screens/login/login_screen.dart';
 import '../presentation/screens/login/qr_login_screen.dart';
+import '../presentation/screens/notifications/notifications_screen.dart';
+import '../presentation/screens/profile/profile_screen.dart';
 import '../presentation/screens/dashboard/home_screen.dart';
 
-final GlobalKey<NavigatorState> _rootNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'root');
+final GlobalKey<NavigatorState> _rootNavigatorKey =
+    GlobalKey<NavigatorState>(debugLabel: 'root');
 
 final appRouter = GoRouter(
   navigatorKey: _rootNavigatorKey,
@@ -15,12 +18,17 @@ final appRouter = GoRouter(
     GoRoute(path: '/splash', builder: (context, state) => const SplashScreen()),
     GoRoute(path: '/setup', builder: (context, state) => const SetupScreen()),
     GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
-    GoRoute(path: '/qr-login', builder: (context, state) => const QRLoginScreen()),
+    GoRoute(
+        path: '/qr-login', builder: (context, state) => const QRLoginScreen()),
+    GoRoute(
+        path: '/notifications',
+        builder: (context, state) => const NotificationsScreen()),
+    GoRoute(
+        path: '/profile', builder: (context, state) => const ProfileScreen()),
     GoRoute(
       path: '/',
       builder: (context, state) => const HomeScreen(),
-      routes: [
-      ],
+      routes: [],
     ),
   ],
 );

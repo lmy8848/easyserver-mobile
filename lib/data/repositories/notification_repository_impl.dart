@@ -7,10 +7,16 @@ class NotificationRepositoryImpl implements NotificationRepository {
   NotificationRepositoryImpl(this._api);
 
   @override
-  Future<List<NotificationItem>> list({bool unreadOnly = false, int limit = 50}) async {
-    final data = await _api.get('/notifications', queryParameters: {'unread': unreadOnly, 'limit': limit});
-    return (data['notifications'] as List<dynamic>? ?? data['items'] as List<dynamic>? ?? data as List<dynamic>?)
-        ?.map((e) => NotificationItem.fromJson(e as Map<String, dynamic>)).toList() ?? [];
+  Future<List<NotificationItem>> list(
+      {bool unreadOnly = false, int limit = 50}) async {
+    final data = await _api.get('/notifications',
+        queryParameters: {'unread': unreadOnly, 'limit': limit});
+    return (data['notifications'] as List<dynamic>? ??
+                data['items'] as List<dynamic>? ??
+                data as List<dynamic>?)
+            ?.map((e) => NotificationItem.fromJson(e as Map<String, dynamic>))
+            .toList() ??
+        [];
   }
 
   @override
@@ -20,11 +26,17 @@ class NotificationRepositoryImpl implements NotificationRepository {
   }
 
   @override
-  Future<void> markAsRead(int id) async { await _api.put('/notifications/$id/read'); }
+  Future<void> markAsRead(int id) async {
+    await _api.put('/notifications/$id/read');
+  }
 
   @override
-  Future<void> markAllAsRead() async { await _api.put('/notifications/read-all'); }
+  Future<void> markAllAsRead() async {
+    await _api.put('/notifications/read-all');
+  }
 
   @override
-  Future<void> delete(int id) async { await _api.delete('/notifications/$id'); }
+  Future<void> delete(int id) async {
+    await _api.delete('/notifications/$id');
+  }
 }

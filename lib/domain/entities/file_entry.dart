@@ -14,5 +14,6 @@ class FileEntry with _$FileEntry {
     @JsonKey(name: 'is_symlink') @Default(false) bool isSymlink,
   }) = _FileEntry;
 
-  factory FileEntry.fromJson(Map<String, dynamic> json) => _$FileEntryFromJson(json);
+  factory FileEntry.fromJson(Map<String, dynamic> json) =>
+      _$FileEntryFromJson(json);
 }

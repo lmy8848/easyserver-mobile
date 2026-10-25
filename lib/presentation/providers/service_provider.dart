@@ -6,7 +6,8 @@ final serviceListProvider = FutureProvider<List<ServiceInfo>>((ref) async {
   return ref.read(serviceRepositoryProvider).list();
 });
 
-final serviceActionProvider = StateNotifierProvider.family<ServiceActionNotifier, ServiceActionState, String>((ref, name) {
+final serviceActionProvider = StateNotifierProvider.family<
+    ServiceActionNotifier, ServiceActionState, String>((ref, name) {
   return ServiceActionNotifier(ref.read(serviceRepositoryProvider), name);
 });
 
@@ -14,18 +15,28 @@ class ServiceActionState {
   final bool isLoading;
   final String? error;
   final bool success;
-  const ServiceActionState({this.isLoading = false, this.error, this.success = false});
+  const ServiceActionState(
+      {this.isLoading = false, this.error, this.success = false});
 }
 
 class ServiceActionNotifier extends StateNotifier<ServiceActionState> {
   final dynamic _repo;
   final String name;
 
-  ServiceActionNotifier(this._repo, this.name) : super(const ServiceActionState());
+  ServiceActionNotifier(this._repo, this.name)
+      : super(const ServiceActionState());
 
-  Future<void> start() async { await _action('start', () => _repo.start(name)); }
-  Future<void> stop() async { await _action('stop', () => _repo.stop(name)); }
-  Future<void> restart() async { await _action('restart', () => _repo.restart(name)); }
+  Future<void> start() async {
+    await _action('start', () => _repo.start(name));
+  }
+
+  Future<void> stop() async {
+    await _action('stop', () => _repo.stop(name));
+  }
+
+  Future<void> restart() async {
+    await _action('restart', () => _repo.restart(name));
+  }
 
   Future<void> _action(String label, Future<void> Function() action) async {
     state = ServiceActionState(isLoading: true);

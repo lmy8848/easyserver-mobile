@@ -5,7 +5,8 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 class WsClient {
   WebSocketChannel? _channel;
   StreamSubscription? _subscription;
-  final StreamController<Map<String, dynamic>> _controller = StreamController<Map<String, dynamic>>.broadcast();
+  final StreamController<Map<String, dynamic>> _controller =
+      StreamController<Map<String, dynamic>>.broadcast();
   Timer? _pingTimer;
   bool _isConnected = false;
 
@@ -22,12 +23,17 @@ class WsClient {
 
       _subscription = _channel!.stream.listen(
         (data) {
+          if (data is! String || data.isEmpty) return;
+          // JSON 消息原样下发；非 JSON 文本（如终端 PTY 的原始输出帧）包装为
+          // {type:'output'} —— 后端终端输出是裸文本帧，不是 JSON 包装。
           try {
-            if (data is String) {
-              final msg = jsonDecode(data) as Map<String, dynamic>;
-              _controller.add(msg);
+            final decoded = jsonDecode(data);
+            if (decoded is Map<String, dynamic>) {
+              _controller.add(decoded);
+              return;
             }
           } catch (_) {}
+          _controller.add({'type': 'output', 'data': data});
         },
         onError: (error) {
           _isConnected = false;
@@ -38,10 +44,8 @@ class WsClient {
           _pingTimer?.cancel();
         },
       );
-
-      _pingTimer = Timer.periodic(const Duration(seconds: 30), (_) {
-        send({'type': 'ping'});
-      });
+      // 保活交给 WebSocket 协议层 ping/pong（后端周期性发协议 ping）；
+      // 不再发 JSON ping —— 后端 HandleInput 会拒绝未知 type。
     } catch (e) {
       _isConnected = false;
       _controller.addError(e);

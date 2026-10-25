@@ -35,10 +35,14 @@ class MetricCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 8),
-            Text(value, style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold)),
+            Text(value,
+                style: theme.textTheme.headlineSmall
+                    ?.copyWith(fontWeight: FontWeight.bold)),
             if (subtitle != null) ...[
               const SizedBox(height: 4),
-              Text(subtitle!, style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey)),
+              Text(subtitle!,
+                  style:
+                      theme.textTheme.bodySmall?.copyWith(color: Colors.grey)),
             ],
             if (progress != null) ...[
               const SizedBox(height: 8),

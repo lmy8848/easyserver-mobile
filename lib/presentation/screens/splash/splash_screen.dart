@@ -51,9 +51,12 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
           children: [
             Icon(Icons.dns, size: 80, color: theme.colorScheme.primary),
             const SizedBox(height: 24),
-            Text('EasyServer', style: theme.textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold)),
+            Text('EasyServer',
+                style: theme.textTheme.headlineMedium
+                    ?.copyWith(fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
-            Text('服务器管理面板', style: theme.textTheme.bodyLarge?.copyWith(color: Colors.grey)),
+            Text('服务器管理面板',
+                style: theme.textTheme.bodyLarge?.copyWith(color: Colors.grey)),
             const SizedBox(height: 48),
             const CircularProgressIndicator(),
           ],

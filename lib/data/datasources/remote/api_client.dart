@@ -10,7 +10,6 @@ class ApiClient {
       connectTimeout: const Duration(seconds: 10),
       receiveTimeout: const Duration(seconds: 30),
       sendTimeout: const Duration(seconds: 30),
-
     ));
     _token = token;
     _setupInterceptors();
@@ -38,42 +37,55 @@ class ApiClient {
     ));
   }
 
-  Future<Map<String, dynamic>> get(String path, {Map<String, dynamic>? queryParameters}) async {
-    final response = await _dio.get<Map<String, dynamic>>(path, queryParameters: queryParameters);
+  Future<Map<String, dynamic>> get(String path,
+      {Map<String, dynamic>? queryParameters}) async {
+    final response = await _dio.get<Map<String, dynamic>>(path,
+        queryParameters: queryParameters);
     return _unwrapResponse(response);
   }
 
-  Future<Map<String, dynamic>> post(String path, {Map<String, dynamic>? data}) async {
+  Future<Map<String, dynamic>> post(String path,
+      {Map<String, dynamic>? data}) async {
     final response = await _dio.post<Map<String, dynamic>>(path, data: data);
     return _unwrapResponse(response);
   }
 
-  Future<Map<String, dynamic>> put(String path, {Map<String, dynamic>? data}) async {
+  Future<Map<String, dynamic>> put(String path,
+      {Map<String, dynamic>? data}) async {
     final response = await _dio.put<Map<String, dynamic>>(path, data: data);
     return _unwrapResponse(response);
   }
 
-  Future<Map<String, dynamic>> delete(String path, {Map<String, dynamic>? queryParameters}) async {
-    final response = await _dio.delete<Map<String, dynamic>>(path, queryParameters: queryParameters);
+  Future<Map<String, dynamic>> delete(String path,
+      {Map<String, dynamic>? queryParameters}) async {
+    final response = await _dio.delete<Map<String, dynamic>>(path,
+        queryParameters: queryParameters);
     return _unwrapResponse(response);
   }
 
-  Future<List<dynamic>> getList(String path, {Map<String, dynamic>? queryParameters}) async {
-    final response = await _dio.get<dynamic>(path, queryParameters: queryParameters);
+  Future<List<dynamic>> getList(String path,
+      {Map<String, dynamic>? queryParameters}) async {
+    final response =
+        await _dio.get<dynamic>(path, queryParameters: queryParameters);
     final body = response.data as Map<String, dynamic>;
     if (body['code'] != 0 && body['code'] != 200) {
-      throw ApiException(body['message'] as String? ?? 'Unknown error', body['code'] as int? ?? -1);
+      throw ApiException(body['message'] as String? ?? 'Unknown error',
+          body['code'] as int? ?? -1);
     }
     final d = body['data'];
     if (d is List) return d;
     return [];
   }
 
-  Future<Response> download(String path, String savePath, {Map<String, dynamic>? queryParameters, void Function(int, int)? onReceiveProgress}) {
-    return _dio.download(path, savePath, queryParameters: queryParameters, onReceiveProgress: onReceiveProgress);
+  Future<Response> download(String path, String savePath,
+      {Map<String, dynamic>? queryParameters,
+      void Function(int, int)? onReceiveProgress}) {
+    return _dio.download(path, savePath,
+        queryParameters: queryParameters, onReceiveProgress: onReceiveProgress);
   }
 
-  Future<Response> upload(String path, FormData formData, {void Function(int, int)? onSendProgress}) {
+  Future<Response> upload(String path, FormData formData,
+      {void Function(int, int)? onSendProgress}) {
     return _dio.post(path, data: formData, onSendProgress: onSendProgress);
   }
 
@@ -83,7 +95,8 @@ class ApiClient {
       throw ApiException('Invalid response format', -1);
     }
     if (body['code'] != 0 && body['code'] != 200) {
-      throw ApiException(body['message'] as String? ?? 'Unknown error', body['code'] as int? ?? -1);
+      throw ApiException(body['message'] as String? ?? 'Unknown error',
+          body['code'] as int? ?? -1);
     }
     final d = body['data'];
     if (d is Map<String, dynamic>) return d;

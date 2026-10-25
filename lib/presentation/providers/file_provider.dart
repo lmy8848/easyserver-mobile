@@ -2,7 +2,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../domain/repositories/file_repository.dart';
 import '../../di/providers.dart';
 
-final fileListProvider = StateNotifierProvider.family<FileListNotifier, FileListState, String>((ref, path) {
+final fileListProvider =
+    StateNotifierProvider.family<FileListNotifier, FileListState, String>(
+        (ref, path) {
   return FileListNotifier(ref.read(fileRepositoryProvider), path);
 });
 
@@ -12,9 +14,17 @@ class FileListState {
   final FileListResult? result;
   final String currentPath;
 
-  FileListState({this.isLoading = false, this.error, this.result, required this.currentPath});
+  FileListState(
+      {this.isLoading = false,
+      this.error,
+      this.result,
+      required this.currentPath});
 
-  FileListState copyWith({bool? isLoading, String? error, FileListResult? result, String? currentPath}) {
+  FileListState copyWith(
+      {bool? isLoading,
+      String? error,
+      FileListResult? result,
+      String? currentPath}) {
     return FileListState(
       isLoading: isLoading ?? this.isLoading,
       error: error,
@@ -26,7 +36,8 @@ class FileListState {
 
 class FileListNotifier extends StateNotifier<FileListState> {
   final FileRepository _repo;
-  FileListNotifier(this._repo, String path) : super(FileListState(currentPath: path));
+  FileListNotifier(this._repo, String path)
+      : super(FileListState(currentPath: path));
 
   Future<void> load(String path) async {
     state = state.copyWith(isLoading: true, error: null, currentPath: path);
@@ -39,7 +50,9 @@ class FileListNotifier extends StateNotifier<FileListState> {
   }
 
   Future<void> navigateTo(String path) async => await load(path);
-  Future<void> navigateUp(String? parent) async { if (parent != null) await load(parent); }
+  Future<void> navigateUp(String? parent) async {
+    if (parent != null) await load(parent);
+  }
 
   Future<void> mkdir(String path) async {
     await _repo.mkdir(path);

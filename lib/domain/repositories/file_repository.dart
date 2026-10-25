@@ -11,7 +11,8 @@ abstract class FileRepository {
   Future<void> copy(String source, String dest);
   Future<String> getContent(String path);
   Future<void> saveContent(String path, String content);
-  Future<List<FileSearchResult>> search(String path, String query, {int? limit});
+  Future<List<FileSearchResult>> search(String path, String query,
+      {int? limit});
   Future<void> compress(List<String> sources, String dest);
   Future<void> extract(String source, String dest);
   Future<void> chmod(String path, String mode);
@@ -31,5 +32,10 @@ class FileSearchResult {
   final bool isDir;
   final int size;
   final String? match;
-  FileSearchResult({required this.path, required this.name, required this.isDir, required this.size, this.match});
+  FileSearchResult(
+      {required this.path,
+      required this.name,
+      required this.isDir,
+      required this.size,
+      this.match});
 }

@@ -15,7 +15,9 @@ class ServiceRepositoryImpl implements ServiceRepository {
   Future<List<ServiceInfo>> list() async {
     final data = await _api.get('/services');
     if (data.containsKey('_items')) {
-      return (data['_items'] as List<dynamic>).map((e) => ServiceInfo.fromJson(e as Map<String, dynamic>)).toList();
+      return (data['_items'] as List<dynamic>)
+          .map((e) => ServiceInfo.fromJson(e as Map<String, dynamic>))
+          .toList();
     }
     return [];
   }
@@ -23,7 +25,9 @@ class ServiceRepositoryImpl implements ServiceRepository {
   @override
   Future<List<ServiceInfo>> getDetails(List<String> names) async {
     final data = await _api.post('/services/details', data: {'names': names});
-    return (data as List<dynamic>).map((e) => ServiceInfo.fromJson(e as Map<String, dynamic>)).toList();
+    return (data as List<dynamic>)
+        .map((e) => ServiceInfo.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 
   @override
@@ -33,26 +37,38 @@ class ServiceRepositoryImpl implements ServiceRepository {
   }
 
   @override
-  Future<void> start(String name) async { await _api.post('/services/$name/start'); }
+  Future<void> start(String name) async {
+    await _api.post('/services/$name/start');
+  }
 
   @override
-  Future<void> stop(String name) async { await _api.post('/services/$name/stop'); }
+  Future<void> stop(String name) async {
+    await _api.post('/services/$name/stop');
+  }
 
   @override
-  Future<void> restart(String name) async { await _api.post('/services/$name/restart'); }
+  Future<void> restart(String name) async {
+    await _api.post('/services/$name/restart');
+  }
 
   @override
-  Future<void> enable(String name) async { await _api.post('/services/$name/enable'); }
+  Future<void> enable(String name) async {
+    await _api.post('/services/$name/enable');
+  }
 
   @override
-  Future<void> disable(String name) async { await _api.post('/services/$name/disable'); }
+  Future<void> disable(String name) async {
+    await _api.post('/services/$name/disable');
+  }
 
   @override
   Future<List<Map<String, dynamic>>> getLogs(String name, {int? tail}) async {
     final params = <String, dynamic>{};
     if (tail != null) params['tail'] = tail;
-    final json = await _api.get('/services/$name/logs', queryParameters: params);
-    return (json['lines'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [];
+    final json =
+        await _api.get('/services/$name/logs', queryParameters: params);
+    return (json['lines'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ??
+        [];
   }
 
   @override

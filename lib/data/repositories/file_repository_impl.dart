@@ -11,32 +11,43 @@ class FileRepositoryImpl implements FileRepository {
   Future<FileListResult> list(String path) async {
     final json = await _api.get('/files', queryParameters: {'path': path});
     final entries = (json['entries'] as List<dynamic>?)
-        ?.map((e) => FileEntry.fromJson(e as Map<String, dynamic>)).toList() ?? [];
-    return FileListResult(path: json['path'] as String? ?? path, parent: json['parent'] as String?, entries: entries);
+            ?.map((e) => FileEntry.fromJson(e as Map<String, dynamic>))
+            .toList() ??
+        [];
+    return FileListResult(
+        path: json['path'] as String? ?? path,
+        parent: json['parent'] as String?,
+        entries: entries);
   }
 
   @override
-  Future<void> mkdir(String path) async { await _api.post('/files/mkdir', data: {'path': path}); }
+  Future<void> mkdir(String path) async {
+    await _api.post('/files/mkdir', data: {'path': path});
+  }
 
   @override
   Future<void> upload(String path, String filePath) async {
-    final formData = FormData.fromMap({'file': await MultipartFile.fromFile(filePath), 'path': path});
+    final formData = FormData.fromMap(
+        {'file': await MultipartFile.fromFile(filePath), 'path': path});
     await _api.upload('/files/upload', formData);
   }
 
   @override
   Future<void> download(String path, String savePath) async {
-    await _api.download('/files/download', savePath, queryParameters: {'path': path});
+    await _api
+        .download('/files/download', savePath, queryParameters: {'path': path});
   }
 
   @override
   Future<void> rename(String oldPath, String newPath) async {
-    await _api.put('/files/rename', data: {'old_path': oldPath, 'new_path': newPath});
+    await _api
+        .put('/files/rename', data: {'old_path': oldPath, 'new_path': newPath});
   }
 
   @override
   Future<void> delete(String path, {bool recursive = false}) async {
-    await _api.delete('/files', queryParameters: {'path': path, 'recursive': recursive});
+    await _api.delete('/files',
+        queryParameters: {'path': path, 'recursive': recursive});
   }
 
   @override
@@ -51,7 +62,8 @@ class FileRepositoryImpl implements FileRepository {
 
   @override
   Future<String> getContent(String path) async {
-    final json = await _api.get('/files/content', queryParameters: {'path': path});
+    final json =
+        await _api.get('/files/content', queryParameters: {'path': path});
     return json['content'] as String? ?? '';
   }
 
@@ -61,22 +73,27 @@ class FileRepositoryImpl implements FileRepository {
   }
 
   @override
-  Future<List<FileSearchResult>> search(String path, String query, {int? limit}) async {
+  Future<List<FileSearchResult>> search(String path, String query,
+      {int? limit}) async {
     final params = <String, dynamic>{'path': path, 'q': query};
     if (limit != null) params['limit'] = limit;
     final data = await _api.get('/files/search', queryParameters: params);
     return (data as List<dynamic>).map((e) {
       final m = e as Map<String, dynamic>;
       return FileSearchResult(
-        path: m['path'] as String, name: m['name'] as String,
-        isDir: m['is_dir'] as bool? ?? false, size: m['size'] as int? ?? 0, match: m['match'] as String?,
+        path: m['path'] as String,
+        name: m['name'] as String,
+        isDir: m['is_dir'] as bool? ?? false,
+        size: m['size'] as int? ?? 0,
+        match: m['match'] as String?,
       );
     }).toList();
   }
 
   @override
   Future<void> compress(List<String> sources, String dest) async {
-    await _api.post('/files/compress', data: {'sources': sources, 'dest': dest});
+    await _api
+        .post('/files/compress', data: {'sources': sources, 'dest': dest});
   }
 
   @override
@@ -91,6 +108,7 @@ class FileRepositoryImpl implements FileRepository {
 
   @override
   Future<void> chown(String path, int uid, int gid) async {
-    await _api.put('/files/chown', data: {'path': path, 'uid': uid, 'gid': gid});
+    await _api
+        .put('/files/chown', data: {'path': path, 'uid': uid, 'gid': gid});
   }
 }

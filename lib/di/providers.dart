@@ -32,7 +32,8 @@ final settingsStorageProvider = Provider<SettingsStorage>((ref) {
   return storage;
 });
 
-final serverConfigProvider = StateNotifierProvider<ServerConfigNotifier, ServerConfig?>((ref) {
+final serverConfigProvider =
+    StateNotifierProvider<ServerConfigNotifier, ServerConfig?>((ref) {
   return ServerConfigNotifier(ref.read(secureStorageProvider));
 });
 
@@ -49,7 +50,8 @@ class ServerConfigNotifier extends StateNotifier<ServerConfig?> {
 
   Future<void> setConfig(ServerConfig config) async {
     state = config;
-    final url = '${config.useTls ? "https" : "http"}://${config.host}:${config.port}';
+    final url =
+        '${config.useTls ? "https" : "http"}://${config.host}:${config.port}';
     await _storage.saveServerUrl(url);
   }
 
@@ -59,7 +61,8 @@ class ServerConfigNotifier extends StateNotifier<ServerConfig?> {
   }
 }
 
-final apiClientProvider = Provider<ApiClient>((ref) => ApiClient(baseUrl: 'http://localhost:8080'));
+final apiClientProvider =
+    Provider<ApiClient>((ref) => ApiClient(baseUrl: 'http://localhost:8080'));
 
 final wsClientProvider = Provider<WsClient>((ref) => WsClient());
 
@@ -72,11 +75,13 @@ final authRepositoryProvider = Provider<AuthRepository>((ref) {
 });
 
 final monitorRepositoryProvider = Provider<MonitorRepository>((ref) {
-  return MonitorRepositoryImpl(ref.read(apiClientProvider), ref.read(wsClientProvider));
+  return MonitorRepositoryImpl(
+      ref.read(apiClientProvider), ref.read(wsClientProvider));
 });
 
 final serviceRepositoryProvider = Provider<ServiceRepository>((ref) {
-  return ServiceRepositoryImpl(ref.read(apiClientProvider), ref.read(wsClientProvider));
+  return ServiceRepositoryImpl(
+      ref.read(apiClientProvider), ref.read(wsClientProvider));
 });
 
 final settingsRepositoryProvider = Provider<SettingsRepository>((ref) {

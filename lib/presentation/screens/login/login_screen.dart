@@ -27,9 +27,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   void _handleLogin() {
     if (!_formKey.currentState!.validate()) return;
     ref.read(authStateProvider.notifier).login(
-      _usernameController.text.trim(),
-      _passwordController.text,
-    );
+          _usernameController.text.trim(),
+          _passwordController.text,
+        );
   }
 
   void _showTotpDialog() {
@@ -101,12 +101,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 const SizedBox(height: 60),
                 Icon(Icons.dns, size: 72, color: theme.colorScheme.primary),
                 const SizedBox(height: 16),
-                Text('EasyServer', textAlign: TextAlign.center, style: theme.textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold)),
+                Text('EasyServer',
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.headlineMedium
+                        ?.copyWith(fontWeight: FontWeight.bold)),
                 const SizedBox(height: 32),
                 TextFormField(
                   controller: _usernameController,
-                  decoration: const InputDecoration(labelText: '用户名', prefixIcon: Icon(Icons.person), border: OutlineInputBorder()),
-                  validator: (v) => v == null || v.trim().isEmpty ? '请输入用户名' : null,
+                  decoration: const InputDecoration(
+                      labelText: '用户名',
+                      prefixIcon: Icon(Icons.person),
+                      border: OutlineInputBorder()),
+                  validator: (v) =>
+                      v == null || v.trim().isEmpty ? '请输入用户名' : null,
                 ),
                 const SizedBox(height: 16),
                 TextFormField(
@@ -116,21 +123,33 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     labelText: '密码',
                     prefixIcon: const Icon(Icons.lock),
                     border: const OutlineInputBorder(),
-                    suffixIcon: IconButton(icon: Icon(_obscurePassword ? Icons.visibility_off : Icons.visibility), onPressed: () => setState(() => _obscurePassword = !_obscurePassword)),
+                    suffixIcon: IconButton(
+                        icon: Icon(_obscurePassword
+                            ? Icons.visibility_off
+                            : Icons.visibility),
+                        onPressed: () => setState(
+                            () => _obscurePassword = !_obscurePassword)),
                   ),
                   validator: (v) => v == null || v.isEmpty ? '请输入密码' : null,
                   onFieldSubmitted: (_) => _handleLogin(),
                 ),
                 if (authState.error != null) ...[
                   const SizedBox(height: 12),
-                  Text(authState.error!, style: const TextStyle(color: Colors.red, fontSize: 14), textAlign: TextAlign.center),
+                  Text(authState.error!,
+                      style: const TextStyle(color: Colors.red, fontSize: 14),
+                      textAlign: TextAlign.center),
                 ],
                 const SizedBox(height: 24),
                 FilledButton(
                   onPressed: authState.isLoading ? null : _handleLogin,
-                  style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16)),
+                  style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16)),
                   child: authState.isLoading
-                      ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: Colors.white))
                       : const Text('登录', style: TextStyle(fontSize: 16)),
                 ),
                 const SizedBox(height: 16),

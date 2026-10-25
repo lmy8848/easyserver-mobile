@@ -18,5 +18,6 @@ class ServiceInfo with _$ServiceInfo {
     @JsonKey(name: 'uptime_seconds') int? uptimeSeconds,
   }) = _ServiceInfo;
 
-  factory ServiceInfo.fromJson(Map<String, dynamic> json) => _$ServiceInfoFromJson(json);
+  factory ServiceInfo.fromJson(Map<String, dynamic> json) =>
+      _$ServiceInfoFromJson(json);
 }

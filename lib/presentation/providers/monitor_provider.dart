@@ -3,7 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../domain/entities/monitor_snapshot.dart';
 import '../../di/providers.dart';
 
-final monitorProvider = StateNotifierProvider<MonitorNotifier, AsyncValue<MonitorSnapshot?>>((ref) {
+final monitorProvider =
+    StateNotifierProvider<MonitorNotifier, AsyncValue<MonitorSnapshot?>>((ref) {
   return MonitorNotifier(ref);
 });
 
@@ -15,7 +16,10 @@ class MonitorNotifier extends StateNotifier<AsyncValue<MonitorSnapshot?>> {
 
   Future<void> fetchStats() async {
     state = const AsyncValue.loading();
-    state = await AsyncValue.guard(() => _ref.read(monitorRepositoryProvider).getStats().then((v) => v as MonitorSnapshot?));
+    state = await AsyncValue.guard(() => _ref
+        .read(monitorRepositoryProvider)
+        .getStats()
+        .then((v) => v as MonitorSnapshot?));
   }
 
   void startStreaming() {

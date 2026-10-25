@@ -13,7 +13,8 @@ class ServerConfig with _$ServerConfig {
 
   const ServerConfig._();
 
-  factory ServerConfig.fromJson(Map<String, dynamic> json) => _$ServerConfigFromJson(json);
+  factory ServerConfig.fromJson(Map<String, dynamic> json) =>
+      _$ServerConfigFromJson(json);
 
   static ServerConfig fromUrl(String url) {
     final uri = Uri.parse(url);

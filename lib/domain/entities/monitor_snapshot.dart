@@ -11,7 +11,8 @@ class CpuInfo with _$CpuInfo {
     @JsonKey(name: 'load_15m') required double load15m,
   }) = _CpuInfo;
 
-  factory CpuInfo.fromJson(Map<String, dynamic> json) => _$CpuInfoFromJson(json);
+  factory CpuInfo.fromJson(Map<String, dynamic> json) =>
+      _$CpuInfoFromJson(json);
 }
 
 @freezed
@@ -22,7 +23,8 @@ class MemoryInfo with _$MemoryInfo {
     @JsonKey(name: 'usage_percent') required double usagePercent,
   }) = _MemoryInfo;
 
-  factory MemoryInfo.fromJson(Map<String, dynamic> json) => _$MemoryInfoFromJson(json);
+  factory MemoryInfo.fromJson(Map<String, dynamic> json) =>
+      _$MemoryInfoFromJson(json);
 }
 
 @freezed
@@ -34,7 +36,8 @@ class DiskInfo with _$DiskInfo {
     @JsonKey(name: 'usage_percent') required double usagePercent,
   }) = _DiskInfo;
 
-  factory DiskInfo.fromJson(Map<String, dynamic> json) => _$DiskInfoFromJson(json);
+  factory DiskInfo.fromJson(Map<String, dynamic> json) =>
+      _$DiskInfoFromJson(json);
 }
 
 @freezed
@@ -44,7 +47,8 @@ class NetworkInfo with _$NetworkInfo {
     @JsonKey(name: 'bytes_recv') required int bytesRecv,
   }) = _NetworkInfo;
 
-  factory NetworkInfo.fromJson(Map<String, dynamic> json) => _$NetworkInfoFromJson(json);
+  factory NetworkInfo.fromJson(Map<String, dynamic> json) =>
+      _$NetworkInfoFromJson(json);
 }
 
 @freezed
@@ -59,7 +63,8 @@ class ProcessInfo with _$ProcessInfo {
     required String state,
   }) = _ProcessInfo;
 
-  factory ProcessInfo.fromJson(Map<String, dynamic> json) => _$ProcessInfoFromJson(json);
+  factory ProcessInfo.fromJson(Map<String, dynamic> json) =>
+      _$ProcessInfoFromJson(json);
 }
 
 @freezed
@@ -73,7 +78,8 @@ class SystemInfo with _$SystemInfo {
     @JsonKey(name: 'uptime_seconds') required int uptimeSeconds,
   }) = _SystemInfo;
 
-  factory SystemInfo.fromJson(Map<String, dynamic> json) => _$SystemInfoFromJson(json);
+  factory SystemInfo.fromJson(Map<String, dynamic> json) =>
+      _$SystemInfoFromJson(json);
 }
 
 @freezed
@@ -88,5 +94,6 @@ class MonitorSnapshot with _$MonitorSnapshot {
     required String timestamp,
   }) = _MonitorSnapshot;
 
-  factory MonitorSnapshot.fromJson(Map<String, dynamic> json) => _$MonitorSnapshotFromJson(json);
+  factory MonitorSnapshot.fromJson(Map<String, dynamic> json) =>
+      _$MonitorSnapshotFromJson(json);
 }

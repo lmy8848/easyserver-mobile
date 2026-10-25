@@ -4,7 +4,8 @@ import '../../domain/entities/user.dart';
 import '../../domain/usecases/login_usecase.dart';
 import '../../di/providers.dart';
 
-final authStateProvider = StateNotifierProvider<AuthStateNotifier, AuthState>((ref) {
+final authStateProvider =
+    StateNotifierProvider<AuthStateNotifier, AuthState>((ref) {
   final repo = ref.watch(authRepositoryProvider);
   final secureStorage = ref.watch(secureStorageProvider);
   return AuthStateNotifier(repo, secureStorage, ref);
@@ -56,7 +57,8 @@ class AuthStateNotifier extends StateNotifier<AuthState> {
   final Ref _ref;
   Timer? _heartbeatTimer;
 
-  AuthStateNotifier(this._repo, this._secureStorage, this._ref) : super(const AuthState());
+  AuthStateNotifier(this._repo, this._secureStorage, this._ref)
+      : super(const AuthState());
 
   Future<void> checkAuth() async {
     final token = await _secureStorage.getToken();
@@ -71,15 +73,22 @@ class AuthStateNotifier extends StateNotifier<AuthState> {
     }
   }
 
-  Future<void> login(String username, String password, {String? turnstileToken}) async {
+  Future<void> login(String username, String password,
+      {String? turnstileToken}) async {
     state = state.copyWith(isLoading: true, error: null);
     try {
       final useCase = LoginUseCase(_repo);
-      final result = await useCase(username, password, turnstileToken: turnstileToken);
+      final result =
+          await useCase(username, password, turnstileToken: turnstileToken);
       if (result.requiresTotp) {
-        state = state.copyWith(isLoading: false, requiresTotp: true, tempToken: result.tempToken);
+        state = state.copyWith(
+            isLoading: false, requiresTotp: true, tempToken: result.tempToken);
       } else {
-        state = state.copyWith(isAuthenticated: true, isLoading: false, user: result.user, error: null);
+        state = state.copyWith(
+            isAuthenticated: true,
+            isLoading: false,
+            user: result.user,
+            error: null);
         _startHeartbeat();
       }
     } catch (e) {
@@ -90,8 +99,15 @@ class AuthStateNotifier extends StateNotifier<AuthState> {
   Future<void> verifyTotp(String code, {String? turnstileToken}) async {
     state = state.copyWith(isLoading: true, error: null);
     try {
-      final result = await _repo.verifyTotp(state.tempToken!, code, turnstileToken: turnstileToken);
-      state = state.copyWith(isAuthenticated: true, isLoading: false, user: result.user, requiresTotp: false, tempToken: null, error: null);
+      final result = await _repo.verifyTotp(state.tempToken!, code,
+          turnstileToken: turnstileToken);
+      state = state.copyWith(
+          isAuthenticated: true,
+          isLoading: false,
+          user: result.user,
+          requiresTotp: false,
+          tempToken: null,
+          error: null);
       _startHeartbeat();
     } catch (e) {
       state = state.copyWith(isLoading: false, error: e.toString());
@@ -106,7 +122,8 @@ class AuthStateNotifier extends StateNotifier<AuthState> {
 
   void _startHeartbeat() {
     _heartbeatTimer?.cancel();
-    _heartbeatTimer = Timer.periodic(const Duration(minutes: 10), (_) => _heartbeat());
+    _heartbeatTimer =
+        Timer.periodic(const Duration(minutes: 10), (_) => _heartbeat());
   }
 
   Future<void> _heartbeat() async {

@@ -14,7 +14,8 @@ class AuthRepositoryImpl implements AuthRepository {
   AuthRepositoryImpl(this._api, this._storage, this._device);
 
   @override
-  Future<AuthResult> login(String username, String password, {String? turnstileToken}) async {
+  Future<AuthResult> login(String username, String password,
+      {String? turnstileToken}) async {
     final data = <String, dynamic>{
       'username': username,
       'password': password,
@@ -32,7 +33,8 @@ class AuthRepositoryImpl implements AuthRepository {
   }
 
   @override
-  Future<AuthResult> verifyTotp(String tempToken, String code, {String? turnstileToken}) async {
+  Future<AuthResult> verifyTotp(String tempToken, String code,
+      {String? turnstileToken}) async {
     final data = <String, dynamic>{
       'temp_token': tempToken,
       'code': code,
@@ -49,7 +51,8 @@ class AuthRepositoryImpl implements AuthRepository {
   }
 
   @override
-  Future<AuthResult> verifyBackupCode(String tempToken, String backupCode, {String? turnstileToken}) async {
+  Future<AuthResult> verifyBackupCode(String tempToken, String backupCode,
+      {String? turnstileToken}) async {
     final data = <String, dynamic>{
       'temp_token': tempToken,
       'backup_code': backupCode,
@@ -73,14 +76,17 @@ class AuthRepositoryImpl implements AuthRepository {
 
   @override
   Future<void> logout() async {
-    try { await _api.post('/auth/logout'); } catch (_) {}
+    try {
+      await _api.post('/auth/logout');
+    } catch (_) {}
     await _storage.deleteToken();
     _api.updateToken(null);
   }
 
   @override
   Future<void> changePassword(String oldPassword, String newPassword) async {
-    await _api.post('/auth/change-password', data: {'old_password': oldPassword, 'new_password': newPassword});
+    await _api.post('/auth/change-password',
+        data: {'old_password': oldPassword, 'new_password': newPassword});
   }
 
   @override

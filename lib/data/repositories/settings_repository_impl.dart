@@ -6,10 +6,12 @@ class SettingsRepositoryImpl implements SettingsRepository {
   SettingsRepositoryImpl(this._api);
 
   @override
-  Future<Map<String, dynamic>> getSettings() async => await _api.get('/settings');
+  Future<Map<String, dynamic>> getSettings() async =>
+      await _api.get('/settings');
 
   @override
-  Future<Map<String, dynamic>> getSystemInfo() async => await _api.get('/settings/system');
+  Future<Map<String, dynamic>> getSystemInfo() async =>
+      await _api.get('/settings/system');
 
   @override
   Future<bool> updateServer(Map<String, dynamic> data) async {

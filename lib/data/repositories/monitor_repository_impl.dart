@@ -32,7 +32,8 @@ class MonitorRepositoryImpl implements MonitorRepository {
     _controller = StreamController<MonitorSnapshot>.broadcast();
     _wsClient.stream.listen((msg) {
       if (msg['type'] == 'snapshot') {
-        final snapshot = MonitorSnapshot.fromJson(msg['data'] as Map<String, dynamic>);
+        final snapshot =
+            MonitorSnapshot.fromJson(msg['data'] as Map<String, dynamic>);
         _controller?.add(snapshot);
       }
     });

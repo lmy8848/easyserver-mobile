@@ -15,5 +15,6 @@ class NotificationItem with _$NotificationItem {
     @JsonKey(name: 'created_at') required String createdAt,
   }) = _NotificationItem;
 
-  factory NotificationItem.fromJson(Map<String, dynamic> json) => _$NotificationItemFromJson(json);
+  factory NotificationItem.fromJson(Map<String, dynamic> json) =>
+      _$NotificationItemFromJson(json);
 }

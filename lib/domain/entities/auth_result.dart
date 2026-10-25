@@ -13,5 +13,6 @@ class AuthResult with _$AuthResult {
     @JsonKey(name: 'temp_token') String? tempToken,
   }) = _AuthResult;
 
-  factory AuthResult.fromJson(Map<String, dynamic> json) => _$AuthResultFromJson(json);
+  factory AuthResult.fromJson(Map<String, dynamic> json) =>
+      _$AuthResultFromJson(json);
 }

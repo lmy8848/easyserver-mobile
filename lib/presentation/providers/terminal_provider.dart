@@ -2,7 +2,8 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../di/providers.dart';
 
-final terminalProvider = StateNotifierProvider<TerminalNotifier, TerminalState>((ref) {
+final terminalProvider =
+    StateNotifierProvider<TerminalNotifier, TerminalState>((ref) {
   return TerminalNotifier(ref);
 });
 
@@ -19,7 +20,8 @@ class TerminalState {
     this.error,
   });
 
-  TerminalState copyWith({bool? connected, bool? loading, List<String>? lines, String? error}) {
+  TerminalState copyWith(
+      {bool? connected, bool? loading, List<String>? lines, String? error}) {
     return TerminalState(
       connected: connected ?? this.connected,
       loading: loading ?? this.loading,
@@ -32,7 +34,6 @@ class TerminalState {
 class TerminalNotifier extends StateNotifier<TerminalState> {
   final Ref _ref;
   StreamSubscription? _subscription;
-  String? _sessionId;
 
   TerminalNotifier(this._ref) : super(const TerminalState());
 
@@ -51,8 +52,8 @@ class TerminalNotifier extends StateNotifier<TerminalState> {
         return;
       }
 
-      _sessionId = DateTime.now().millisecondsSinceEpoch.toString();
-      final wsUrl = '${config.wsUrl}/ws/terminal/$_sessionId';
+      // 后端路由为 /ws/terminal（无路径参数），会话由服务端连接时自动创建
+      final wsUrl = '${config.wsUrl}/ws/terminal';
       final wsClient = _ref.read(wsClientProvider);
 
       wsClient.connect(wsUrl, token);
@@ -62,9 +63,25 @@ class TerminalNotifier extends StateNotifier<TerminalState> {
           final type = msg['type'] as String?;
           if (type == 'output') {
             final data = msg['data'] as String? ?? '';
-            state = state.copyWith(lines: [...state.lines, data]);
+            // PTY 原始输出含 ANSI 转义序列，行式展示前剥离（色彩/光标控制等）
+            final clean = _stripAnsi(data);
+            if (clean.isEmpty) return;
+            final merged = state.lines.toList();
+            if (merged.isNotEmpty) {
+              merged.last = merged.last + clean;
+            } else {
+              merged.add(clean);
+            }
+            // 换行符切分新行
+            final parts = merged.last.split('\n');
+            if (parts.length > 1) {
+              merged.removeLast();
+              merged.addAll(parts);
+            }
+            state = state.copyWith(lines: merged);
           } else if (type == 'exit') {
-            state = state.copyWith(connected: false, lines: [...state.lines, '', '--- 会话已结束 ---']);
+            state = state.copyWith(
+                connected: false, lines: [...state.lines, '', '--- 会话已结束 ---']);
           }
         },
         onError: (e) {
@@ -72,7 +89,8 @@ class TerminalNotifier extends StateNotifier<TerminalState> {
         },
       );
 
-      state = state.copyWith(connected: true, loading: false, lines: ['终端已连接', '']);
+      state =
+          state.copyWith(connected: true, loading: false, lines: ['终端已连接', '']);
     } catch (e) {
       state = state.copyWith(loading: false, error: '连接失败: $e');
     }
@@ -82,7 +100,8 @@ class TerminalNotifier extends StateNotifier<TerminalState> {
     _subscription?.cancel();
     _subscription = null;
     _ref.read(wsClientProvider).disconnect();
-    state = state.copyWith(connected: false, lines: [...state.lines, '', '已断开连接']);
+    state =
+        state.copyWith(connected: false, lines: [...state.lines, '', '已断开连接']);
   }
 
   void sendCommand(String cmd) {
@@ -94,6 +113,11 @@ class TerminalNotifier extends StateNotifier<TerminalState> {
   void clear() {
     state = state.copyWith(lines: []);
   }
+
+  // 剥离 ANSI/VT 转义序列（CSI/OSC 等），行式终端仅展示纯文本
+  static final _ansiRe =
+      RegExp(r'\[[0-9;?]*[ -/]*[@-~]|\][^]*(|\)|[@-Z\-_]');
+  String _stripAnsi(String s) => s.replaceAll(_ansiRe, '');
 
   @override
   void dispose() {

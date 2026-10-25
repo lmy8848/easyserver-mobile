@@ -15,7 +15,8 @@ class TerminalRepositoryImpl implements TerminalRepository {
 
     _wsClient.stream.listen((msg) {
       if (msg['type'] == 'output') {
-        controller.add(TerminalMessage(type: 'output', data: msg['data'] as String?));
+        controller
+            .add(TerminalMessage(type: 'output', data: msg['data'] as String?));
       } else if (msg['type'] == 'exit') {
         controller.add(TerminalMessage(type: 'exit'));
       }

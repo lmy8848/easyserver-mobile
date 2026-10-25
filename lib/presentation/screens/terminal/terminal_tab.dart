@@ -51,12 +51,19 @@ class _TerminalTabState extends ConsumerState<TerminalTab> {
           color: theme.colorScheme.surfaceContainerHighest,
           child: Row(
             children: [
-              Container(width: 8, height: 8, decoration: BoxDecoration(color: terminal.connected ? Colors.green : Colors.orange, shape: BoxShape.circle)),
+              Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                      color: terminal.connected ? Colors.green : Colors.orange,
+                      shape: BoxShape.circle)),
               const SizedBox(width: 8),
-              Text(terminal.connected ? '已连接' : '未连接', style: theme.textTheme.bodySmall),
+              Text(terminal.connected ? '已连接' : '未连接',
+                  style: theme.textTheme.bodySmall),
               const Spacer(),
               IconButton(
-                icon: Icon(terminal.connected ? Icons.link_off : Icons.link, size: 18),
+                icon: Icon(terminal.connected ? Icons.link_off : Icons.link,
+                    size: 18),
                 onPressed: () {
                   if (terminal.connected) {
                     ref.read(terminalProvider.notifier).disconnect();
@@ -81,7 +88,8 @@ class _TerminalTabState extends ConsumerState<TerminalTab> {
             width: double.infinity,
             padding: const EdgeInsets.all(8),
             color: Colors.red.shade900,
-            child: Text(terminal.error!, style: const TextStyle(color: Colors.white, fontSize: 12)),
+            child: Text(terminal.error!,
+                style: const TextStyle(color: Colors.white, fontSize: 12)),
           ),
         Expanded(
           child: Container(
@@ -111,11 +119,18 @@ class _TerminalTabState extends ConsumerState<TerminalTab> {
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
           child: Row(
             children: [
-              const Text('\$ ', style: TextStyle(fontFamily: 'monospace', color: Colors.greenAccent, fontSize: 14)),
+              const Text('\$ ',
+                  style: TextStyle(
+                      fontFamily: 'monospace',
+                      color: Colors.greenAccent,
+                      fontSize: 14)),
               Expanded(
                 child: TextField(
                   controller: _inputController,
-                  style: const TextStyle(fontFamily: 'monospace', color: Colors.white, fontSize: 14),
+                  style: const TextStyle(
+                      fontFamily: 'monospace',
+                      color: Colors.white,
+                      fontSize: 14),
                   decoration: const InputDecoration(
                     border: InputBorder.none,
                     isDense: true,
@@ -126,7 +141,8 @@ class _TerminalTabState extends ConsumerState<TerminalTab> {
                 ),
               ),
               IconButton(
-                icon: const Icon(Icons.send, size: 18, color: Colors.greenAccent),
+                icon:
+                    const Icon(Icons.send, size: 18, color: Colors.greenAccent),
                 onPressed: terminal.connected ? _executeCommand : null,
                 visualDensity: VisualDensity.compact,
               ),

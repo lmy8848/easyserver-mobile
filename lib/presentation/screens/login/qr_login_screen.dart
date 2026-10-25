@@ -37,7 +37,8 @@ class _QRLoginScreenState extends ConsumerState<QRLoginScreen> {
       await repo.confirmQrLogin(qrToken);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('扫码登录授权成功'), backgroundColor: Colors.green),
+          const SnackBar(
+              content: Text('扫码登录授权成功'), backgroundColor: Colors.green),
         );
         context.pop();
       }
@@ -66,8 +67,7 @@ class _QRLoginScreenState extends ConsumerState<QRLoginScreen> {
             controller: _controller,
             onDetect: _onDetect,
           ),
-          if (_processing)
-            const Center(child: CircularProgressIndicator()),
+          if (_processing) const Center(child: CircularProgressIndicator()),
           Positioned(
             left: 0,
             right: 0,
@@ -75,7 +75,8 @@ class _QRLoginScreenState extends ConsumerState<QRLoginScreen> {
             child: Text(
               '扫描 EasyServer Web 面板上的二维码',
               textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.white.withValues(alpha: 0.8), fontSize: 14),
+              style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.8), fontSize: 14),
             ),
           ),
         ],

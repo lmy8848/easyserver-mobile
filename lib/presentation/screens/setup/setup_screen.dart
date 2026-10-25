@@ -53,7 +53,8 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
       if (mounted) context.go('/login');
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('连接失败: $e'), backgroundColor: Colors.red));
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('连接失败: $e'), backgroundColor: Colors.red));
       }
     } finally {
       if (mounted) setState(() => _isTesting = false);
@@ -74,9 +75,15 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
             children: [
               Icon(Icons.dns, size: 64, color: theme.colorScheme.primary),
               const SizedBox(height: 16),
-              Text('连接到 EasyServer', textAlign: TextAlign.center, style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold)),
+              Text('连接到 EasyServer',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.headlineSmall
+                      ?.copyWith(fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
-              Text('输入您的 EasyServer 面板地址', textAlign: TextAlign.center, style: theme.textTheme.bodyMedium?.copyWith(color: Colors.grey)),
+              Text('输入您的 EasyServer 面板地址',
+                  textAlign: TextAlign.center,
+                  style:
+                      theme.textTheme.bodyMedium?.copyWith(color: Colors.grey)),
               const SizedBox(height: 32),
               SwitchListTile(
                 title: const Text('启用 HTTPS'),
@@ -93,7 +100,8 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                   prefixIcon: const Icon(Icons.computer),
                 ),
                 keyboardType: TextInputType.url,
-                validator: (v) => v == null || v.trim().isEmpty ? '请输入服务器地址' : null,
+                validator: (v) =>
+                    v == null || v.trim().isEmpty ? '请输入服务器地址' : null,
               ),
               const SizedBox(height: 16),
               TextFormField(
@@ -107,7 +115,8 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                 validator: (v) {
                   if (v == null || v.trim().isEmpty) return '请输入端口';
                   final port = int.tryParse(v.trim());
-                  if (port == null || port < 1 || port > 65535) return '端口范围 1-65535';
+                  if (port == null || port < 1 || port > 65535)
+                    return '端口范围 1-65535';
                   return null;
                 },
               ),
@@ -115,7 +124,11 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
               FilledButton(
                 onPressed: _isTesting ? null : _save,
                 child: _isTesting
-                    ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white))
                     : const Text('连接服务器'),
               ),
             ],
