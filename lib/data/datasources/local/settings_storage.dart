@@ -2,8 +2,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class SettingsStorage {
   late final SharedPreferences _prefs;
+  Future<void>? _initFuture;
 
-  Future<void> init() async {
+  /// 幂等初始化（缓存首次的 Future，并发调用安全）：
+  /// settingsStorageProvider 同步返回实例，读取前必须先 await 本方法，
+  /// 否则 late _prefs 未就绪会抛 LateInitializationError。
+  Future<void> init() => _initFuture ??= _doInit();
+
+  Future<void> _doInit() async {
     _prefs = await SharedPreferences.getInstance();
   }
 

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/home_state.dart';
 import '../../providers/notification_provider.dart';
 import './dashboard_tab.dart';
 import '../services/services_tab.dart';
@@ -133,7 +134,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _currentIndex,
-        onDestinationSelected: (i) => setState(() => _currentIndex = i),
+        onDestinationSelected: (i) {
+          setState(() => _currentIndex = i);
+          // 广播可见性：IndexedStack 常驻各 tab，仪表盘等据此懒加载/停刷
+          ref.read(homeTabProvider.notifier).state = i;
+        },
         destinations: const [
           NavigationDestination(
               icon: Icon(Icons.dashboard_outlined),

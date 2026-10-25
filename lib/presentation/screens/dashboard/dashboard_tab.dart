@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/dashboard_settings_provider.dart';
+import '../../providers/home_state.dart';
 import '../../providers/monitor_provider.dart';
 import '../../widgets/metric_card.dart';
 
@@ -15,14 +16,14 @@ class DashboardTab extends ConsumerStatefulWidget {
 class _DashboardTabState extends ConsumerState<DashboardTab> {
   Timer? _timer;
   int? _activeInterval;
+  bool _hasLoadedOnce = false;
 
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(monitorProvider.notifier).fetchStats();
-      _reschedule();
-    });
+  void _loadNow({bool silent = false}) {
+    // 首次加载走非静默（loading 态）；切回/自动刷新静默，不打断已有数据
+    ref
+        .read(monitorProvider.notifier)
+        .fetchStats(silent: silent && _hasLoadedOnce);
+    _hasLoadedOnce = true;
   }
 
   // 按设置项的间隔自动刷新；间隔改动（含关闭）即时生效
@@ -33,7 +34,8 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
     if (seconds == null || seconds <= 0) return;
     _timer = Timer.periodic(Duration(seconds: seconds), (_) {
       if (!mounted) return;
-      ref.read(monitorProvider.notifier).fetchStats();
+      // 自动刷新用静默模式：失败不打断已有数据，由横幅提示
+      ref.read(monitorProvider.notifier).fetchStats(silent: true);
     });
   }
 
@@ -47,10 +49,15 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final monitorState = ref.watch(monitorProvider);
-    final refreshSeconds = ref.watch(dashboardRefreshProvider);
-    if (_activeInterval != refreshSeconds) {
-      _activeInterval = refreshSeconds;
+    final refreshError = ref.watch(monitorErrorProvider);
+    // IndexedStack 常驻各 tab：watch 可见性与间隔，变化即重建调度。
+    // tab 切走 → effective=0 停刷（懒加载省电省流量）；切回 → 立即刷新并恢复周期。
+    final isActive = ref.watch(homeTabProvider) == 0;
+    final effective = isActive ? ref.watch(dashboardRefreshProvider) : 0;
+    if (_activeInterval != effective) {
+      _activeInterval = effective;
       _reschedule();
+      if (isActive && _hasLoadedOnce) _loadNow(silent: true);
     }
 
     return RefreshIndicator(
@@ -92,6 +99,30 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // 自动刷新失败的轻提示：保留旧数据展示，不整页报错
+                if (refreshError != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.warning_amber_rounded,
+                            size: 16, color: Colors.orange),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text('数据刷新失败，当前展示上次数据',
+                              style: theme.textTheme.bodySmall
+                                  ?.copyWith(color: Colors.orange.shade700)),
+                        ),
+                        GestureDetector(
+                          onTap: () => ref
+                              .read(monitorErrorProvider.notifier)
+                              .state = null,
+                          child: const Icon(Icons.close,
+                              size: 14, color: Colors.orange),
+                        ),
+                      ],
+                    ),
+                  ),
                 // CPU + Memory + Disk row
                 Row(
                   children: [

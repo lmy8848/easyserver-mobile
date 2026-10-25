@@ -187,6 +187,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   onTap: () => context.push('/setup'),
                 ),
                 ListTile(
+                  leading: const Icon(Icons.receipt_long),
+                  title: const Text('运行日志'),
+                  subtitle: const Text('全局异常与运行事件记录'),
+                  onTap: () => context.push('/logs'),
+                ),
+                ListTile(
                   leading: const Icon(Icons.logout, color: Colors.red),
                   title:
                       const Text('退出登录', style: TextStyle(color: Colors.red)),

@@ -8,14 +8,21 @@ class DashboardRefreshNotifier extends StateNotifier<int> {
   static const _default = 10;
 
   DashboardRefreshNotifier(this._ref) : super(_default) {
-    final saved = _ref.read(settingsStorageProvider).getInt(_key);
-    if (saved >= 0) state = saved;
+    _load();
   }
 
   final Ref _ref;
 
   /// 候选间隔（秒）；0 表示关闭
   static const choices = [0, 5, 10, 30, 60];
+
+  Future<void> _load() async {
+    // 存储初始化是异步的（provider 同步返回实例），读取前必须等待
+    final storage = _ref.read(settingsStorageProvider);
+    await storage.init();
+    final saved = storage.getInt(_key);
+    if (saved >= 0) state = saved;
+  }
 
   Future<void> setInterval(int seconds) async {
     state = seconds;

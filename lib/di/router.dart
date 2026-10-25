@@ -6,6 +6,7 @@ import '../presentation/screens/login/login_screen.dart';
 import '../presentation/screens/login/qr_login_screen.dart';
 import '../presentation/screens/notifications/notifications_screen.dart';
 import '../presentation/screens/profile/profile_screen.dart';
+import '../presentation/screens/logs/logs_screen.dart';
 import '../presentation/screens/dashboard/home_screen.dart';
 
 final GlobalKey<NavigatorState> _rootNavigatorKey =
@@ -25,6 +26,7 @@ final appRouter = GoRouter(
         builder: (context, state) => const NotificationsScreen()),
     GoRoute(
         path: '/profile', builder: (context, state) => const ProfileScreen()),
+    GoRoute(path: '/logs', builder: (context, state) => const LogsScreen()),
     GoRoute(
       path: '/',
       builder: (context, state) => const HomeScreen(),

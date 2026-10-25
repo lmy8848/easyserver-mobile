@@ -1,5 +1,7 @@
 import 'package:dio/dio.dart';
 
+import '../../../core/logger/app_logger.dart';
+
 class ApiClient {
   late final Dio _dio;
   String? _token;
@@ -32,6 +34,9 @@ class ApiClient {
         handler.next(options);
       },
       onError: (error, handler) {
+        // 请求失败进运行日志：方法/路径/原因，便于现场排障
+        AppLogger.w('请求失败 ${error.requestOptions.method} '
+            '${error.requestOptions.path}: ${error.message}');
         handler.next(error);
       },
     ));
