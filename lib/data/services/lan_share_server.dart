@@ -325,15 +325,17 @@ function crumbs(p){
 }
 
 async function go(p){
-  CWD = p;
-  crumbs(p);
   const r = await api('/api/list?path='+encodeURIComponent(p));
   const d = await r.json();
   if(d.code!==0){ tip(d.message||'列表失败', false); return; }
+  // 以服务端返回的实际路径为准（首页空路径 -> 手机存储根），
+  // 否则 CWD 停留在空串，点子项会拼出无前缀路径被安全策略拒绝
+  CWD = d.path || p;
+  crumbs(CWD);
   const ul=document.getElementById('list'); ul.innerHTML='';
   if(!d.entries.length){ ul.innerHTML='<li style="justify-content:center;color:#90a4ae">空目录</li>'; }
   d.entries.forEach(e=>{
-    const full = (p? p+'/'+e.name : '/'+e.name);
+    const full = (CWD? CWD+'/'+e.name : '/'+e.name);
     const li=document.createElement('li');
     li.className='row'; li.dataset.path=full; li.dataset.isDir=e.isDir;
     li.innerHTML='<span class="icon">'+(e.isDir?'📁':'📄')+'</span>'+
