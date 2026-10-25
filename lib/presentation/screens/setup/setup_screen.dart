@@ -18,6 +18,30 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
   bool _isTesting = false;
 
   @override
+  void initState() {
+    super.initState();
+    _prefillFromSaved();
+  }
+
+  // 已保存过服务器地址时自动回填表单，更换服务器时无需重新输入
+  Future<void> _prefillFromSaved() async {
+    var config = ref.read(serverConfigProvider);
+    if (config == null) {
+      await ref.read(serverConfigProvider.notifier).loadConfig();
+      config = ref.read(serverConfigProvider);
+    }
+    if (config == null || !mounted) return;
+    final host = config.host;
+    final port = config.port;
+    final useTls = config.useTls;
+    setState(() {
+      _hostController.text = host;
+      if (port > 0) _portController.text = port.toString();
+      _useTls = useTls;
+    });
+  }
+
+  @override
   void dispose() {
     _hostController.dispose();
     _portController.dispose();
