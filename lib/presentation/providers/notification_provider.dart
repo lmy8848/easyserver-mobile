@@ -119,10 +119,27 @@ class NotificationNotifier extends StateNotifier<NotificationState> {
   }
 
   Future<void> delete(int id) async {
-    await _ref.read(notificationRepositoryProvider).delete(id);
-    final items = state.items.where((e) => e.id != id).toList();
+    // Dismissible 的 onDismissed 要求条目从树中立即移除，否则抛
+    // "A dismissed Dismissible widget is still part of the tree"（debug 红屏）。
+    // 因此先乐观更新本地列表（滑出动画结束时该项已消失），网络删除异步跟进，
+    // 失败时按原位置回滚并提示。
+    final removedIndex = state.items.indexWhere((e) => e.id == id);
+    if (removedIndex < 0) return;
+    final removed = state.items[removedIndex];
+    final items = [...state.items]..removeAt(removedIndex);
     final unread = items.where((e) => !e.isRead).length;
     state = state.copyWith(items: items, unreadCount: unread);
+
+    try {
+      await _ref.read(notificationRepositoryProvider).delete(id);
+    } catch (e) {
+      if (_disposed) return;
+      final restored = [...state.items];
+      restored.insert(removedIndex.clamp(0, restored.length), removed);
+      final restoredUnread = restored.where((e) => !e.isRead).length;
+      state = state.copyWith(
+          items: restored, unreadCount: restoredUnread, error: '删除失败: $e');
+    }
   }
 
   @override
