@@ -63,8 +63,11 @@ class TerminalNotifier extends StateNotifier<TerminalState> {
           final type = msg['type'] as String?;
           if (type == 'output') {
             final data = msg['data'] as String? ?? '';
-            // PTY 原始输出含 ANSI 转义序列，行式展示前剥离（色彩/光标控制等）
-            final clean = _stripAnsi(data);
+            // PTY 原始输出含 ANSI 转义序列，行式展示前剥离（色彩/光标控制等）；
+            // CRLF 规范为 LF、剔除残留 CR——Flutter 文本布局把 CR 当强制换行，
+            // 残留会让每行后多渲染一个空行（表现为行距异常大）
+            final clean =
+                _stripAnsi(data).replaceAll('\r\n', '\n').replaceAll('\r', '');
             if (clean.isEmpty) return;
             final merged = state.lines.toList();
             if (merged.isNotEmpty) {

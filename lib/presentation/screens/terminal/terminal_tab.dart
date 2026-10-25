@@ -107,7 +107,7 @@ class _TerminalTabState extends ConsumerState<TerminalTab> {
                     fontFamily: 'monospace',
                     fontSize: 13,
                     color: isPrompt ? Colors.greenAccent : Colors.grey.shade300,
-                    height: 1.5,
+                    height: 1.25,
                   ),
                 );
               },
