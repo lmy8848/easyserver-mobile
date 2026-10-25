@@ -98,8 +98,34 @@ class AdbService {
     return entries;
   }
 
-  Future<String> connect(String hostPort) =>
-      raw(['connect', hostPort], timeout: const Duration(seconds: 10));
+  Future<String> connect(String hostPort) async {
+    final out = await raw([
+      'connect',
+      hostPort,
+    ], timeout: const Duration(seconds: 10));
+    if (out.contains('connected to') && !out.contains('cannot')) {
+      await rememberConnectTarget(hostPort);
+    }
+    return out;
+  }
+
+  /// 上次成功连接的 IP:端口（无线调试开关期间端口通常不变，配对后优先重试）
+  Future<String?> lastConnectTarget() async {
+    try {
+      final f = File('.devboard_last_connect');
+      if (await f.exists()) {
+        final v = (await f.readAsString()).trim();
+        return v.isEmpty ? null : v;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  Future<void> rememberConnectTarget(String target) async {
+    try {
+      await File('.devboard_last_connect').writeAsString(target);
+    } catch (_) {}
+  }
 
   /// 定位 scrcpy.exe：bin/scrcpy/（仓库内）→ PATH
   Future<String?> resolveScrcpy() async {

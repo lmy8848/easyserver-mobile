@@ -8,7 +8,8 @@ import 'adb_service.dart';
 /// 端口 + 6 位配对码 → adb pair → mDNS 自动发现连接端口 → connect。
 /// 配对一次永久有效，之后只需 connect。
 class PairWizardDialog extends StatefulWidget {
-  const PairWizardDialog({super.key});
+  final VoidCallback? onConnected;
+  const PairWizardDialog({super.key, this.onConnected});
   @override
   State<PairWizardDialog> createState() => _PairWizardDialogState();
 }
@@ -96,33 +97,48 @@ class _PairWizardDialogState extends State<PairWizardDialog> {
         });
         return;
       }
-      setState(() => _status = '配对成功！正在寻找连接端口…');
-      // 配对成功后自动发现连接端口并 connect
-      var target = await _discoverService('_adb-tls-connect');
-      if ((target == null || target.isEmpty) && mounted) {
-        // mdns 未见时让用户手填（无线调试主界面的端口）
-        target = await _askConnectPort();
-      }
-      if (target != null && target.isNotEmpty) {
-        final connectOut = await AdbService.instance.raw([
-          'connect',
-          target,
-        ], timeout: const Duration(seconds: 10));
+      setState(() => _status = '配对成功！正在自动连接…');
+      // 连接发现：上次成功端口优先（无线调试开关期间端口通常不变），
+      // 再持续轮询 mDNS；全部失败时提供手动填写入口（不阻塞）
+      final tried = <String>{};
+      final last = await AdbService.instance.lastConnectTarget();
+      if (last != null && last.isNotEmpty) tried.add(last);
+      String? connected;
+      for (var round = 0; round < 8; round++) {
         if (!mounted) return;
-        setState(() {
-          _busy = false;
-          _status = connectOut.contains('connected')
-              ? '已连接 $target，可以关闭本窗口'
-              : '连接：$connectOut';
-        });
-      } else if (mounted) {
-        setState(() {
-          _busy = false;
-          _status =
-              '配对成功。未自动发现连接端口，'
-              '请在主界面点「连接无线设备」填入无线调试主界面的端口';
-        });
+        final hit = await _discoverService('_adb-tls-connect');
+        if (hit != null && hit.isNotEmpty) tried.add(hit);
+        for (final t in tried.toList()) {
+          if (!mounted) return;
+          setState(() => _status = '正在连接 $t …（第 ${round + 1} 轮）');
+          final connectOut = await AdbService.instance.raw([
+            'connect',
+            t,
+          ], timeout: const Duration(seconds: 8));
+          if (connectOut.contains('connected to') &&
+              !connectOut.contains('cannot')) {
+            connected = t;
+            break;
+          }
+        }
+        if (connected != null) break;
+        await Future<void>.delayed(const Duration(seconds: 3));
       }
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        if (connected != null) {
+          _status = '已连接 $connected，可以关闭本窗口';
+          widget.onConnected?.call();
+          _showManualConnect = false;
+        } else {
+          _status =
+              '配对成功，但自动连接未成功。'
+              '可在下方「手动填写连接端口」（见无线调试主界面），'
+              '或稍后由向导继续尝试。';
+          _showManualConnect = true;
+        }
+      });
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -132,12 +148,14 @@ class _PairWizardDialogState extends State<PairWizardDialog> {
     }
   }
 
-  Future<String?> _askConnectPort() async {
+  bool _showManualConnect = false;
+
+  Future<void> _manualConnect() async {
     final controller = TextEditingController(text: '192.168.1.10:');
     final result = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('填入连接端口'),
+        title: const Text('手动连接'),
         content: TextField(
           controller: controller,
           decoration: const InputDecoration(
@@ -149,7 +167,7 @@ class _PairWizardDialogState extends State<PairWizardDialog> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('跳过'),
+            child: const Text('取消'),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, controller.text.trim()),
@@ -158,7 +176,22 @@ class _PairWizardDialogState extends State<PairWizardDialog> {
         ],
       ),
     );
-    return (result == null || result.endsWith(':')) ? null : result;
+    if (result == null || result.isEmpty || result.endsWith(':')) return;
+    setState(() => _status = '正在连接 $result …');
+    final out = await AdbService.instance.raw([
+      'connect',
+      result,
+    ], timeout: const Duration(seconds: 10));
+    if (!mounted) return;
+    setState(() {
+      _status = out.contains('connected to') && !out.contains('cannot')
+          ? '已连接 $result，可以关闭本窗口'
+          : '连接：$out';
+    });
+    if (out.contains('connected to') && !out.contains('cannot')) {
+      widget.onConnected?.call();
+      setState(() => _showManualConnect = false);
+    }
   }
 
   @override
@@ -236,6 +269,12 @@ class _PairWizardDialogState extends State<PairWizardDialog> {
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(_status, style: const TextStyle(fontSize: 12)),
+              ),
+            if (_showManualConnect)
+              TextButton.icon(
+                icon: const Icon(Icons.edit, size: 16),
+                label: const Text('手动填写连接端口', style: TextStyle(fontSize: 12)),
+                onPressed: _busy ? null : _manualConnect,
               ),
           ],
         ),
