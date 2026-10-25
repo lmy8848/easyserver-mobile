@@ -1156,7 +1156,12 @@ mixin _$SystemInfo {
   @JsonKey(name: 'cpu_cores')
   int get cpuCores => throw _privateConstructorUsedError;
   @JsonKey(name: 'uptime_seconds')
-  int get uptimeSeconds => throw _privateConstructorUsedError;
+  int get uptimeSeconds =>
+      throw _privateConstructorUsedError; // 旧版后端可能不下发，保持可空兼容
+  @JsonKey(name: 'local_ip')
+  String? get localIp => throw _privateConstructorUsedError;
+  @JsonKey(name: 'public_ip')
+  String? get publicIp => throw _privateConstructorUsedError;
 
   /// Serializes this SystemInfo to a JSON map.
   Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
@@ -1180,7 +1185,9 @@ abstract class $SystemInfoCopyWith<$Res> {
       String kernel,
       String arch,
       @JsonKey(name: 'cpu_cores') int cpuCores,
-      @JsonKey(name: 'uptime_seconds') int uptimeSeconds});
+      @JsonKey(name: 'uptime_seconds') int uptimeSeconds,
+      @JsonKey(name: 'local_ip') String? localIp,
+      @JsonKey(name: 'public_ip') String? publicIp});
 }
 
 /// @nodoc
@@ -1204,6 +1211,8 @@ class _$SystemInfoCopyWithImpl<$Res, $Val extends SystemInfo>
     Object? arch = null,
     Object? cpuCores = null,
     Object? uptimeSeconds = null,
+    Object? localIp = freezed,
+    Object? publicIp = freezed,
   }) {
     return _then(_value.copyWith(
       hostname: null == hostname
@@ -1230,6 +1239,14 @@ class _$SystemInfoCopyWithImpl<$Res, $Val extends SystemInfo>
           ? _value.uptimeSeconds
           : uptimeSeconds // ignore: cast_nullable_to_non_nullable
               as int,
+      localIp: freezed == localIp
+          ? _value.localIp
+          : localIp // ignore: cast_nullable_to_non_nullable
+              as String?,
+      publicIp: freezed == publicIp
+          ? _value.publicIp
+          : publicIp // ignore: cast_nullable_to_non_nullable
+              as String?,
     ) as $Val);
   }
 }
@@ -1248,7 +1265,9 @@ abstract class _$$SystemInfoImplCopyWith<$Res>
       String kernel,
       String arch,
       @JsonKey(name: 'cpu_cores') int cpuCores,
-      @JsonKey(name: 'uptime_seconds') int uptimeSeconds});
+      @JsonKey(name: 'uptime_seconds') int uptimeSeconds,
+      @JsonKey(name: 'local_ip') String? localIp,
+      @JsonKey(name: 'public_ip') String? publicIp});
 }
 
 /// @nodoc
@@ -1270,6 +1289,8 @@ class __$$SystemInfoImplCopyWithImpl<$Res>
     Object? arch = null,
     Object? cpuCores = null,
     Object? uptimeSeconds = null,
+    Object? localIp = freezed,
+    Object? publicIp = freezed,
   }) {
     return _then(_$SystemInfoImpl(
       hostname: null == hostname
@@ -1296,6 +1317,14 @@ class __$$SystemInfoImplCopyWithImpl<$Res>
           ? _value.uptimeSeconds
           : uptimeSeconds // ignore: cast_nullable_to_non_nullable
               as int,
+      localIp: freezed == localIp
+          ? _value.localIp
+          : localIp // ignore: cast_nullable_to_non_nullable
+              as String?,
+      publicIp: freezed == publicIp
+          ? _value.publicIp
+          : publicIp // ignore: cast_nullable_to_non_nullable
+              as String?,
     ));
   }
 }
@@ -1309,7 +1338,9 @@ class _$SystemInfoImpl implements _SystemInfo {
       required this.kernel,
       required this.arch,
       @JsonKey(name: 'cpu_cores') required this.cpuCores,
-      @JsonKey(name: 'uptime_seconds') required this.uptimeSeconds});
+      @JsonKey(name: 'uptime_seconds') required this.uptimeSeconds,
+      @JsonKey(name: 'local_ip') this.localIp,
+      @JsonKey(name: 'public_ip') this.publicIp});
 
   factory _$SystemInfoImpl.fromJson(Map<String, dynamic> json) =>
       _$$SystemInfoImplFromJson(json);
@@ -1328,10 +1359,17 @@ class _$SystemInfoImpl implements _SystemInfo {
   @override
   @JsonKey(name: 'uptime_seconds')
   final int uptimeSeconds;
+// 旧版后端可能不下发，保持可空兼容
+  @override
+  @JsonKey(name: 'local_ip')
+  final String? localIp;
+  @override
+  @JsonKey(name: 'public_ip')
+  final String? publicIp;
 
   @override
   String toString() {
-    return 'SystemInfo(hostname: $hostname, os: $os, kernel: $kernel, arch: $arch, cpuCores: $cpuCores, uptimeSeconds: $uptimeSeconds)';
+    return 'SystemInfo(hostname: $hostname, os: $os, kernel: $kernel, arch: $arch, cpuCores: $cpuCores, uptimeSeconds: $uptimeSeconds, localIp: $localIp, publicIp: $publicIp)';
   }
 
   @override
@@ -1347,13 +1385,16 @@ class _$SystemInfoImpl implements _SystemInfo {
             (identical(other.cpuCores, cpuCores) ||
                 other.cpuCores == cpuCores) &&
             (identical(other.uptimeSeconds, uptimeSeconds) ||
-                other.uptimeSeconds == uptimeSeconds));
+                other.uptimeSeconds == uptimeSeconds) &&
+            (identical(other.localIp, localIp) || other.localIp == localIp) &&
+            (identical(other.publicIp, publicIp) ||
+                other.publicIp == publicIp));
   }
 
   @JsonKey(includeFromJson: false, includeToJson: false)
   @override
-  int get hashCode => Object.hash(
-      runtimeType, hostname, os, kernel, arch, cpuCores, uptimeSeconds);
+  int get hashCode => Object.hash(runtimeType, hostname, os, kernel, arch,
+      cpuCores, uptimeSeconds, localIp, publicIp);
 
   /// Create a copy of SystemInfo
   /// with the given fields replaced by the non-null parameter values.
@@ -1373,13 +1414,14 @@ class _$SystemInfoImpl implements _SystemInfo {
 
 abstract class _SystemInfo implements SystemInfo {
   const factory _SystemInfo(
-          {required final String hostname,
-          required final String os,
-          required final String kernel,
-          required final String arch,
-          @JsonKey(name: 'cpu_cores') required final int cpuCores,
-          @JsonKey(name: 'uptime_seconds') required final int uptimeSeconds}) =
-      _$SystemInfoImpl;
+      {required final String hostname,
+      required final String os,
+      required final String kernel,
+      required final String arch,
+      @JsonKey(name: 'cpu_cores') required final int cpuCores,
+      @JsonKey(name: 'uptime_seconds') required final int uptimeSeconds,
+      @JsonKey(name: 'local_ip') final String? localIp,
+      @JsonKey(name: 'public_ip') final String? publicIp}) = _$SystemInfoImpl;
 
   factory _SystemInfo.fromJson(Map<String, dynamic> json) =
       _$SystemInfoImpl.fromJson;
@@ -1397,7 +1439,13 @@ abstract class _SystemInfo implements SystemInfo {
   int get cpuCores;
   @override
   @JsonKey(name: 'uptime_seconds')
-  int get uptimeSeconds;
+  int get uptimeSeconds; // 旧版后端可能不下发，保持可空兼容
+  @override
+  @JsonKey(name: 'local_ip')
+  String? get localIp;
+  @override
+  @JsonKey(name: 'public_ip')
+  String? get publicIp;
 
   /// Create a copy of SystemInfo
   /// with the given fields replaced by the non-null parameter values.

@@ -76,6 +76,9 @@ class SystemInfo with _$SystemInfo {
     required String arch,
     @JsonKey(name: 'cpu_cores') required int cpuCores,
     @JsonKey(name: 'uptime_seconds') required int uptimeSeconds,
+    // 旧版后端可能不下发，保持可空兼容
+    @JsonKey(name: 'local_ip') String? localIp,
+    @JsonKey(name: 'public_ip') String? publicIp,
   }) = _SystemInfo;
 
   factory SystemInfo.fromJson(Map<String, dynamic> json) =>

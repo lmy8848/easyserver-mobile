@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../providers/dashboard_settings_provider.dart';
 import '../../providers/monitor_provider.dart';
 import '../../widgets/metric_card.dart';
 
@@ -10,18 +13,45 @@ class DashboardTab extends ConsumerStatefulWidget {
 }
 
 class _DashboardTabState extends ConsumerState<DashboardTab> {
+  Timer? _timer;
+  int? _activeInterval;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(monitorProvider.notifier).fetchStats();
+      _reschedule();
     });
+  }
+
+  // 按设置项的间隔自动刷新；间隔改动（含关闭）即时生效
+  void _reschedule() {
+    _timer?.cancel();
+    _timer = null;
+    final seconds = _activeInterval;
+    if (seconds == null || seconds <= 0) return;
+    _timer = Timer.periodic(Duration(seconds: seconds), (_) {
+      if (!mounted) return;
+      ref.read(monitorProvider.notifier).fetchStats();
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final monitorState = ref.watch(monitorProvider);
+    final refreshSeconds = ref.watch(dashboardRefreshProvider);
+    if (_activeInterval != refreshSeconds) {
+      _activeInterval = refreshSeconds;
+      _reschedule();
+    }
 
     return RefreshIndicator(
       onRefresh: () => ref.read(monitorProvider.notifier).fetchStats(),
@@ -194,6 +224,30 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
                 ),
                 const SizedBox(height: 12),
 
+                // System info: hostname + IPs
+                if (snapshot.system != null)
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(children: [
+                            Icon(Icons.dns,
+                                size: 20, color: theme.colorScheme.primary),
+                            const SizedBox(width: 8),
+                            Text('服务器', style: theme.textTheme.titleSmall)
+                          ]),
+                          const SizedBox(height: 12),
+                          _infoRow('主机名', snapshot.system!.hostname),
+                          _infoRow('内网 IP', snapshot.system!.localIp ?? '-'),
+                          _infoRow('公网 IP', snapshot.system!.publicIp ?? '-'),
+                        ],
+                      ),
+                    ),
+                  ),
+                const SizedBox(height: 12),
+
                 // Top Processes
                 if (processes.isNotEmpty) ...[
                   Card(
@@ -258,6 +312,21 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
                   const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
         ]),
       ],
+    );
+  }
+
+  Widget _infoRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+          Text(value,
+              style:
+                  const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+        ],
+      ),
     );
   }
 

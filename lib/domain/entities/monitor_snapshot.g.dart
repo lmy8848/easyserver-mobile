@@ -94,6 +94,8 @@ _$SystemInfoImpl _$$SystemInfoImplFromJson(Map<String, dynamic> json) =>
       arch: json['arch'] as String,
       cpuCores: (json['cpu_cores'] as num).toInt(),
       uptimeSeconds: (json['uptime_seconds'] as num).toInt(),
+      localIp: json['local_ip'] as String?,
+      publicIp: json['public_ip'] as String?,
     );
 
 Map<String, dynamic> _$$SystemInfoImplToJson(_$SystemInfoImpl instance) =>
@@ -104,6 +106,8 @@ Map<String, dynamic> _$$SystemInfoImplToJson(_$SystemInfoImpl instance) =>
       'arch': instance.arch,
       'cpu_cores': instance.cpuCores,
       'uptime_seconds': instance.uptimeSeconds,
+      'local_ip': instance.localIp,
+      'public_ip': instance.publicIp,
     };
 
 _$MonitorSnapshotImpl _$$MonitorSnapshotImplFromJson(

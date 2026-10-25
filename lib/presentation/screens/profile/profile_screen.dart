@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../di/providers.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/dashboard_settings_provider.dart';
 
 /// 账户与安全：用户信息、两步验证（TOTP）管理、会话管理（踢出）、修改密码。
 /// 数据层 API 均已就绪（authRepository），此页完成 UI 接线。
@@ -162,7 +163,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           ),
           const SizedBox(height: 12),
 
-          // ── 修改密码 / 服务器 / 退出 ──
+          // ── 修改密码 / 刷新间隔 / 服务器 / 退出 ──
           Card(
             child: Column(
               children: [
@@ -170,6 +171,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   leading: const Icon(Icons.password),
                   title: const Text('修改密码'),
                   onTap: _showChangePasswordDialog,
+                ),
+                ListTile(
+                  leading: const Icon(Icons.refresh),
+                  title: const Text('仪表盘刷新间隔'),
+                  subtitle:
+                      Text(_refreshLabel(ref.watch(dashboardRefreshProvider))),
+                  onTap: _showRefreshIntervalDialog,
                 ),
                 ListTile(
                   leading: const Icon(Icons.dns),
@@ -190,6 +198,35 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         ],
       ),
     );
+  }
+
+  String _refreshLabel(int seconds) =>
+      seconds <= 0 ? '关闭（手动刷新）' : '每 $seconds 秒';
+
+  Future<void> _showRefreshIntervalDialog() async {
+    final choice = await showModalBottomSheet<int>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text('仪表盘自动刷新间隔'),
+            ),
+            ...DashboardRefreshNotifier.choices.map(
+              (s) => ListTile(
+                title: Text(_refreshLabel(s)),
+                onTap: () => Navigator.of(ctx).pop(s),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (choice != null) {
+      await ref.read(dashboardRefreshProvider.notifier).setInterval(choice);
+    }
   }
 
   String _clientHint(String? ua) {
