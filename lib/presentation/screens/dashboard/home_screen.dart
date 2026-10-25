@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/app_toast.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/home_state.dart';
 import '../../providers/notification_provider.dart';
 import './dashboard_tab.dart';
+import '../containers/containers_tab.dart';
 import '../services/services_tab.dart';
 import '../terminal/terminal_tab.dart';
 import '../files/files_tab.dart';
@@ -21,6 +23,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // provider 层操作反馈（容器启停等）通过全局 Toast 弹出
+      AppToast.bind(ScaffoldMessenger.of(context));
+    });
     // 通知轮询：未读角标 + 新通知 SnackBar（SSE 适合 Web 常连接，移动端轮询更省电）
     ref.read(notificationProvider.notifier).startPolling(onNew: (item) {
       if (mounted) {
@@ -127,6 +133,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         index: _currentIndex,
         children: const [
           DashboardTab(),
+          ContainersTab(),
           ServicesTab(),
           TerminalTab(),
           FilesTab(),
@@ -144,6 +151,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               icon: Icon(Icons.dashboard_outlined),
               selectedIcon: Icon(Icons.dashboard),
               label: '仪表盘'),
+          NavigationDestination(
+              icon: Icon(Icons.view_in_ar_outlined),
+              selectedIcon: Icon(Icons.view_in_ar),
+              label: '容器'),
           NavigationDestination(
               icon: Icon(Icons.miscellaneous_services_outlined),
               selectedIcon: Icon(Icons.miscellaneous_services),
