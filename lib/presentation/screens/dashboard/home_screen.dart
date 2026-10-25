@@ -56,7 +56,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(['仪表盘', '服务', '终端', '文件'][_currentIndex]),
+        title: Text(
+            ['仪表盘', '容器', '服务', '终端', '文件'][_currentIndex]),
         actions: [
           if (authState.sessionExpiring)
             const Padding(
