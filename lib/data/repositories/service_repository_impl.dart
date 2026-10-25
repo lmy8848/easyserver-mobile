@@ -14,18 +14,19 @@ class ServiceRepositoryImpl implements ServiceRepository {
   @override
   Future<List<ServiceInfo>> list() async {
     final data = await _api.get('/services');
-    if (data.containsKey('_items')) {
-      return (data['_items'] as List<dynamic>)
-          .map((e) => ServiceInfo.fromJson(e as Map<String, dynamic>))
-          .toList();
-    }
-    return [];
+    // 后端返回 httpx.Page{items,total}；_unwrapResponse 会把裸列表包成 {'_items': ...}
+    final items = (data['items'] ?? data['_items']) as List<dynamic>? ?? [];
+    return items
+        .map((e) => ServiceInfo.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 
   @override
   Future<List<ServiceInfo>> getDetails(List<String> names) async {
     final data = await _api.post('/services/details', data: {'names': names});
-    return (data as List<dynamic>)
+    final items =
+        (data['_items'] ?? data['items'] ?? const []) as List<dynamic>;
+    return items
         .map((e) => ServiceInfo.fromJson(e as Map<String, dynamic>))
         .toList();
   }

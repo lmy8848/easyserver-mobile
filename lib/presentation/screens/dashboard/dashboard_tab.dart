@@ -99,7 +99,7 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
                 const SizedBox(height: 12),
 
                 // Disk
-                if (disk.isNotEmpty) ...[
+                if (disk.totalBytes > 0) ...[
                   Card(
                     child: Padding(
                       padding: const EdgeInsets.all(16),
@@ -113,7 +113,7 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
                             Text('磁盘', style: theme.textTheme.titleSmall)
                           ]),
                           const SizedBox(height: 12),
-                          ...disk.take(3).map((d) => Padding(
+                          ...[disk].map((d) => Padding(
                                 padding: const EdgeInsets.only(bottom: 8),
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,

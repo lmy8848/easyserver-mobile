@@ -87,7 +87,8 @@ class MonitorSnapshot with _$MonitorSnapshot {
   const factory MonitorSnapshot({
     required CpuInfo cpu,
     required MemoryInfo memory,
-    required List<DiskInfo> disk,
+    // 后端 /monitor/stats 的 disk 是单个聚合对象（根分区汇总），不是数组
+    required DiskInfo disk,
     required NetworkInfo network,
     SystemInfo? system,
     @JsonKey(name: 'top_process') List<ProcessInfo>? topProcess,

@@ -78,7 +78,10 @@ class FileRepositoryImpl implements FileRepository {
     final params = <String, dynamic>{'path': path, 'q': query};
     if (limit != null) params['limit'] = limit;
     final data = await _api.get('/files/search', queryParameters: params);
-    return (data as List<dynamic>).map((e) {
+    // _unwrapResponse 会把裸列表包成 {'_items': ...}
+    final items =
+        (data['_items'] ?? data['items'] ?? const []) as List<dynamic>;
+    return items.map((e) {
       final m = e as Map<String, dynamic>;
       return FileSearchResult(
         path: m['path'] as String,

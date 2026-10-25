@@ -114,9 +114,15 @@ class TerminalNotifier extends StateNotifier<TerminalState> {
     state = state.copyWith(lines: []);
   }
 
-  // 剥离 ANSI/VT 转义序列（CSI/OSC 等），行式终端仅展示纯文本
-  static final _ansiRe =
-      RegExp(r'\[[0-9;?]*[ -/]*[@-~]|\][^]*(|\)|[@-Z\-_]');
+  // 剥离 ANSI/VT 转义序列（CSI/OSC 等），行式终端仅展示纯文本。
+  // 转义必须写成 \x1B/\x07 交由正则引擎解析——此前版本把真实 ESC 字节
+  // 直接嵌进 raw 字符串并用 \a 缩写，该 pattern 在 web 端（JS RegExp）
+  // 无法编译，导致 _stripAnsi 每次调用抛异常、终端输出全部丢失。
+  static final _ansiRe = RegExp(
+    r'\x1B\[[0-9;?]*[ -/]*[@-~]' // CSI 序列（颜色/光标控制）
+    r'|\x1B\][^\x07]*(\x07|\x1B\\)' // OSC 序列（标题等，BEL 或 ST 结尾）
+    r'|\x1B[@-Z\\-_]', // 其余单字符转义
+  );
   String _stripAnsi(String s) => s.replaceAll(_ansiRe, '');
 
   @override

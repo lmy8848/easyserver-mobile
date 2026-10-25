@@ -1414,8 +1414,9 @@ MonitorSnapshot _$MonitorSnapshotFromJson(Map<String, dynamic> json) {
 /// @nodoc
 mixin _$MonitorSnapshot {
   CpuInfo get cpu => throw _privateConstructorUsedError;
-  MemoryInfo get memory => throw _privateConstructorUsedError;
-  List<DiskInfo> get disk => throw _privateConstructorUsedError;
+  MemoryInfo get memory =>
+      throw _privateConstructorUsedError; // 后端 /monitor/stats 的 disk 是单个聚合对象（根分区汇总），不是数组
+  DiskInfo get disk => throw _privateConstructorUsedError;
   NetworkInfo get network => throw _privateConstructorUsedError;
   SystemInfo? get system => throw _privateConstructorUsedError;
   @JsonKey(name: 'top_process')
@@ -1441,7 +1442,7 @@ abstract class $MonitorSnapshotCopyWith<$Res> {
   $Res call(
       {CpuInfo cpu,
       MemoryInfo memory,
-      List<DiskInfo> disk,
+      DiskInfo disk,
       NetworkInfo network,
       SystemInfo? system,
       @JsonKey(name: 'top_process') List<ProcessInfo>? topProcess,
@@ -1449,6 +1450,7 @@ abstract class $MonitorSnapshotCopyWith<$Res> {
 
   $CpuInfoCopyWith<$Res> get cpu;
   $MemoryInfoCopyWith<$Res> get memory;
+  $DiskInfoCopyWith<$Res> get disk;
   $NetworkInfoCopyWith<$Res> get network;
   $SystemInfoCopyWith<$Res>? get system;
 }
@@ -1488,7 +1490,7 @@ class _$MonitorSnapshotCopyWithImpl<$Res, $Val extends MonitorSnapshot>
       disk: null == disk
           ? _value.disk
           : disk // ignore: cast_nullable_to_non_nullable
-              as List<DiskInfo>,
+              as DiskInfo,
       network: null == network
           ? _value.network
           : network // ignore: cast_nullable_to_non_nullable
@@ -1532,6 +1534,16 @@ class _$MonitorSnapshotCopyWithImpl<$Res, $Val extends MonitorSnapshot>
   /// with the given fields replaced by the non-null parameter values.
   @override
   @pragma('vm:prefer-inline')
+  $DiskInfoCopyWith<$Res> get disk {
+    return $DiskInfoCopyWith<$Res>(_value.disk, (value) {
+      return _then(_value.copyWith(disk: value) as $Val);
+    });
+  }
+
+  /// Create a copy of MonitorSnapshot
+  /// with the given fields replaced by the non-null parameter values.
+  @override
+  @pragma('vm:prefer-inline')
   $NetworkInfoCopyWith<$Res> get network {
     return $NetworkInfoCopyWith<$Res>(_value.network, (value) {
       return _then(_value.copyWith(network: value) as $Val);
@@ -1564,7 +1576,7 @@ abstract class _$$MonitorSnapshotImplCopyWith<$Res>
   $Res call(
       {CpuInfo cpu,
       MemoryInfo memory,
-      List<DiskInfo> disk,
+      DiskInfo disk,
       NetworkInfo network,
       SystemInfo? system,
       @JsonKey(name: 'top_process') List<ProcessInfo>? topProcess,
@@ -1574,6 +1586,8 @@ abstract class _$$MonitorSnapshotImplCopyWith<$Res>
   $CpuInfoCopyWith<$Res> get cpu;
   @override
   $MemoryInfoCopyWith<$Res> get memory;
+  @override
+  $DiskInfoCopyWith<$Res> get disk;
   @override
   $NetworkInfoCopyWith<$Res> get network;
   @override
@@ -1611,9 +1625,9 @@ class __$$MonitorSnapshotImplCopyWithImpl<$Res>
           : memory // ignore: cast_nullable_to_non_nullable
               as MemoryInfo,
       disk: null == disk
-          ? _value._disk
+          ? _value.disk
           : disk // ignore: cast_nullable_to_non_nullable
-              as List<DiskInfo>,
+              as DiskInfo,
       network: null == network
           ? _value.network
           : network // ignore: cast_nullable_to_non_nullable
@@ -1640,13 +1654,12 @@ class _$MonitorSnapshotImpl implements _MonitorSnapshot {
   const _$MonitorSnapshotImpl(
       {required this.cpu,
       required this.memory,
-      required final List<DiskInfo> disk,
+      required this.disk,
       required this.network,
       this.system,
       @JsonKey(name: 'top_process') final List<ProcessInfo>? topProcess,
       required this.timestamp})
-      : _disk = disk,
-        _topProcess = topProcess;
+      : _topProcess = topProcess;
 
   factory _$MonitorSnapshotImpl.fromJson(Map<String, dynamic> json) =>
       _$$MonitorSnapshotImplFromJson(json);
@@ -1655,14 +1668,9 @@ class _$MonitorSnapshotImpl implements _MonitorSnapshot {
   final CpuInfo cpu;
   @override
   final MemoryInfo memory;
-  final List<DiskInfo> _disk;
+// 后端 /monitor/stats 的 disk 是单个聚合对象（根分区汇总），不是数组
   @override
-  List<DiskInfo> get disk {
-    if (_disk is EqualUnmodifiableListView) return _disk;
-    // ignore: implicit_dynamic_type
-    return EqualUnmodifiableListView(_disk);
-  }
-
+  final DiskInfo disk;
   @override
   final NetworkInfo network;
   @override
@@ -1693,7 +1701,7 @@ class _$MonitorSnapshotImpl implements _MonitorSnapshot {
             other is _$MonitorSnapshotImpl &&
             (identical(other.cpu, cpu) || other.cpu == cpu) &&
             (identical(other.memory, memory) || other.memory == memory) &&
-            const DeepCollectionEquality().equals(other._disk, _disk) &&
+            (identical(other.disk, disk) || other.disk == disk) &&
             (identical(other.network, network) || other.network == network) &&
             (identical(other.system, system) || other.system == system) &&
             const DeepCollectionEquality()
@@ -1704,15 +1712,8 @@ class _$MonitorSnapshotImpl implements _MonitorSnapshot {
 
   @JsonKey(includeFromJson: false, includeToJson: false)
   @override
-  int get hashCode => Object.hash(
-      runtimeType,
-      cpu,
-      memory,
-      const DeepCollectionEquality().hash(_disk),
-      network,
-      system,
-      const DeepCollectionEquality().hash(_topProcess),
-      timestamp);
+  int get hashCode => Object.hash(runtimeType, cpu, memory, disk, network,
+      system, const DeepCollectionEquality().hash(_topProcess), timestamp);
 
   /// Create a copy of MonitorSnapshot
   /// with the given fields replaced by the non-null parameter values.
@@ -1735,7 +1736,7 @@ abstract class _MonitorSnapshot implements MonitorSnapshot {
   const factory _MonitorSnapshot(
       {required final CpuInfo cpu,
       required final MemoryInfo memory,
-      required final List<DiskInfo> disk,
+      required final DiskInfo disk,
       required final NetworkInfo network,
       final SystemInfo? system,
       @JsonKey(name: 'top_process') final List<ProcessInfo>? topProcess,
@@ -1747,9 +1748,9 @@ abstract class _MonitorSnapshot implements MonitorSnapshot {
   @override
   CpuInfo get cpu;
   @override
-  MemoryInfo get memory;
+  MemoryInfo get memory; // 后端 /monitor/stats 的 disk 是单个聚合对象（根分区汇总），不是数组
   @override
-  List<DiskInfo> get disk;
+  DiskInfo get disk;
   @override
   NetworkInfo get network;
   @override

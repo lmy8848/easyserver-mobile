@@ -83,7 +83,7 @@ class _ServicesTabState extends ConsumerState<ServicesTab> {
                             s.name
                                 .toLowerCase()
                                 .contains(_filter.toLowerCase()) ||
-                            s.displayName
+                            (s.shortName ?? s.name)
                                 .toLowerCase()
                                 .contains(_filter.toLowerCase()))
                         .toList();
@@ -155,7 +155,7 @@ class _ServiceCard extends ConsumerWidget {
                   ),
                   const SizedBox(width: 8),
                   Expanded(
-                      child: Text(service.displayName ?? service.name,
+                      child: Text(service.shortName ?? service.name,
                           style: theme.textTheme.titleSmall)),
                   StatusBadge(status: service.state),
                 ],

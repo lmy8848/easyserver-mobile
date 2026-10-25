@@ -11,12 +11,13 @@ class NotificationRepositoryImpl implements NotificationRepository {
       {bool unreadOnly = false, int limit = 50}) async {
     final data = await _api.get('/notifications',
         queryParameters: {'unread': unreadOnly, 'limit': limit});
-    return (data['notifications'] as List<dynamic>? ??
-                data['items'] as List<dynamic>? ??
-                data as List<dynamic>?)
-            ?.map((e) => NotificationItem.fromJson(e as Map<String, dynamic>))
-            .toList() ??
+    // 后端返回 httpx.Page{items,total}；_unwrapResponse 会把裸列表包成 {'_items': ...}
+    final items = (data['items'] ?? data['_items'] ?? data['notifications'])
+            as List<dynamic>? ??
         [];
+    return items
+        .map((e) => NotificationItem.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 
   @override

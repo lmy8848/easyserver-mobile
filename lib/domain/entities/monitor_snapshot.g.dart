@@ -111,9 +111,7 @@ _$MonitorSnapshotImpl _$$MonitorSnapshotImplFromJson(
     _$MonitorSnapshotImpl(
       cpu: CpuInfo.fromJson(json['cpu'] as Map<String, dynamic>),
       memory: MemoryInfo.fromJson(json['memory'] as Map<String, dynamic>),
-      disk: (json['disk'] as List<dynamic>)
-          .map((e) => DiskInfo.fromJson(e as Map<String, dynamic>))
-          .toList(),
+      disk: DiskInfo.fromJson(json['disk'] as Map<String, dynamic>),
       network: NetworkInfo.fromJson(json['network'] as Map<String, dynamic>),
       system: json['system'] == null
           ? null

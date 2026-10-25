@@ -20,14 +20,17 @@ ServiceInfo _$ServiceInfoFromJson(Map<String, dynamic> json) {
 
 /// @nodoc
 mixin _$ServiceInfo {
-  String get name => throw _privateConstructorUsedError;
-  @JsonKey(name: 'display_name')
-  String get displayName => throw _privateConstructorUsedError;
+  String get name =>
+      throw _privateConstructorUsedError; // 后端 systemd.ServiceInfo 无 display_name/category 字段；
+// short_name 为托管服务去前缀短名（系统服务等于 name）
+  @JsonKey(name: 'short_name')
+  String? get shortName => throw _privateConstructorUsedError;
   String? get description => throw _privateConstructorUsedError;
-  String? get category => throw _privateConstructorUsedError;
   String get state => throw _privateConstructorUsedError;
   @JsonKey(name: 'sub_state')
   String? get subState => throw _privateConstructorUsedError;
+  @JsonKey(name: 'unit_file_state')
+  String? get unitFileState => throw _privateConstructorUsedError;
   bool? get enabled => throw _privateConstructorUsedError;
   int? get pid => throw _privateConstructorUsedError;
   @JsonKey(name: 'memory_bytes')
@@ -36,6 +39,7 @@ mixin _$ServiceInfo {
   double? get cpuPercent => throw _privateConstructorUsedError;
   @JsonKey(name: 'uptime_seconds')
   int? get uptimeSeconds => throw _privateConstructorUsedError;
+  bool? get managed => throw _privateConstructorUsedError;
 
   /// Serializes this ServiceInfo to a JSON map.
   Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
@@ -55,16 +59,17 @@ abstract class $ServiceInfoCopyWith<$Res> {
   @useResult
   $Res call(
       {String name,
-      @JsonKey(name: 'display_name') String displayName,
+      @JsonKey(name: 'short_name') String? shortName,
       String? description,
-      String? category,
       String state,
       @JsonKey(name: 'sub_state') String? subState,
+      @JsonKey(name: 'unit_file_state') String? unitFileState,
       bool? enabled,
       int? pid,
       @JsonKey(name: 'memory_bytes') int? memoryBytes,
       @JsonKey(name: 'cpu_percent') double? cpuPercent,
-      @JsonKey(name: 'uptime_seconds') int? uptimeSeconds});
+      @JsonKey(name: 'uptime_seconds') int? uptimeSeconds,
+      bool? managed});
 }
 
 /// @nodoc
@@ -83,33 +88,30 @@ class _$ServiceInfoCopyWithImpl<$Res, $Val extends ServiceInfo>
   @override
   $Res call({
     Object? name = null,
-    Object? displayName = null,
+    Object? shortName = freezed,
     Object? description = freezed,
-    Object? category = freezed,
     Object? state = null,
     Object? subState = freezed,
+    Object? unitFileState = freezed,
     Object? enabled = freezed,
     Object? pid = freezed,
     Object? memoryBytes = freezed,
     Object? cpuPercent = freezed,
     Object? uptimeSeconds = freezed,
+    Object? managed = freezed,
   }) {
     return _then(_value.copyWith(
       name: null == name
           ? _value.name
           : name // ignore: cast_nullable_to_non_nullable
               as String,
-      displayName: null == displayName
-          ? _value.displayName
-          : displayName // ignore: cast_nullable_to_non_nullable
-              as String,
+      shortName: freezed == shortName
+          ? _value.shortName
+          : shortName // ignore: cast_nullable_to_non_nullable
+              as String?,
       description: freezed == description
           ? _value.description
           : description // ignore: cast_nullable_to_non_nullable
-              as String?,
-      category: freezed == category
-          ? _value.category
-          : category // ignore: cast_nullable_to_non_nullable
               as String?,
       state: null == state
           ? _value.state
@@ -118,6 +120,10 @@ class _$ServiceInfoCopyWithImpl<$Res, $Val extends ServiceInfo>
       subState: freezed == subState
           ? _value.subState
           : subState // ignore: cast_nullable_to_non_nullable
+              as String?,
+      unitFileState: freezed == unitFileState
+          ? _value.unitFileState
+          : unitFileState // ignore: cast_nullable_to_non_nullable
               as String?,
       enabled: freezed == enabled
           ? _value.enabled
@@ -139,6 +145,10 @@ class _$ServiceInfoCopyWithImpl<$Res, $Val extends ServiceInfo>
           ? _value.uptimeSeconds
           : uptimeSeconds // ignore: cast_nullable_to_non_nullable
               as int?,
+      managed: freezed == managed
+          ? _value.managed
+          : managed // ignore: cast_nullable_to_non_nullable
+              as bool?,
     ) as $Val);
   }
 }
@@ -153,16 +163,17 @@ abstract class _$$ServiceInfoImplCopyWith<$Res>
   @useResult
   $Res call(
       {String name,
-      @JsonKey(name: 'display_name') String displayName,
+      @JsonKey(name: 'short_name') String? shortName,
       String? description,
-      String? category,
       String state,
       @JsonKey(name: 'sub_state') String? subState,
+      @JsonKey(name: 'unit_file_state') String? unitFileState,
       bool? enabled,
       int? pid,
       @JsonKey(name: 'memory_bytes') int? memoryBytes,
       @JsonKey(name: 'cpu_percent') double? cpuPercent,
-      @JsonKey(name: 'uptime_seconds') int? uptimeSeconds});
+      @JsonKey(name: 'uptime_seconds') int? uptimeSeconds,
+      bool? managed});
 }
 
 /// @nodoc
@@ -179,33 +190,30 @@ class __$$ServiceInfoImplCopyWithImpl<$Res>
   @override
   $Res call({
     Object? name = null,
-    Object? displayName = null,
+    Object? shortName = freezed,
     Object? description = freezed,
-    Object? category = freezed,
     Object? state = null,
     Object? subState = freezed,
+    Object? unitFileState = freezed,
     Object? enabled = freezed,
     Object? pid = freezed,
     Object? memoryBytes = freezed,
     Object? cpuPercent = freezed,
     Object? uptimeSeconds = freezed,
+    Object? managed = freezed,
   }) {
     return _then(_$ServiceInfoImpl(
       name: null == name
           ? _value.name
           : name // ignore: cast_nullable_to_non_nullable
               as String,
-      displayName: null == displayName
-          ? _value.displayName
-          : displayName // ignore: cast_nullable_to_non_nullable
-              as String,
+      shortName: freezed == shortName
+          ? _value.shortName
+          : shortName // ignore: cast_nullable_to_non_nullable
+              as String?,
       description: freezed == description
           ? _value.description
           : description // ignore: cast_nullable_to_non_nullable
-              as String?,
-      category: freezed == category
-          ? _value.category
-          : category // ignore: cast_nullable_to_non_nullable
               as String?,
       state: null == state
           ? _value.state
@@ -214,6 +222,10 @@ class __$$ServiceInfoImplCopyWithImpl<$Res>
       subState: freezed == subState
           ? _value.subState
           : subState // ignore: cast_nullable_to_non_nullable
+              as String?,
+      unitFileState: freezed == unitFileState
+          ? _value.unitFileState
+          : unitFileState // ignore: cast_nullable_to_non_nullable
               as String?,
       enabled: freezed == enabled
           ? _value.enabled
@@ -235,6 +247,10 @@ class __$$ServiceInfoImplCopyWithImpl<$Res>
           ? _value.uptimeSeconds
           : uptimeSeconds // ignore: cast_nullable_to_non_nullable
               as int?,
+      managed: freezed == managed
+          ? _value.managed
+          : managed // ignore: cast_nullable_to_non_nullable
+              as bool?,
     ));
   }
 }
@@ -244,34 +260,38 @@ class __$$ServiceInfoImplCopyWithImpl<$Res>
 class _$ServiceInfoImpl implements _ServiceInfo {
   const _$ServiceInfoImpl(
       {required this.name,
-      @JsonKey(name: 'display_name') required this.displayName,
+      @JsonKey(name: 'short_name') this.shortName,
       this.description,
-      this.category,
       required this.state,
       @JsonKey(name: 'sub_state') this.subState,
+      @JsonKey(name: 'unit_file_state') this.unitFileState,
       this.enabled,
       this.pid,
       @JsonKey(name: 'memory_bytes') this.memoryBytes,
       @JsonKey(name: 'cpu_percent') this.cpuPercent,
-      @JsonKey(name: 'uptime_seconds') this.uptimeSeconds});
+      @JsonKey(name: 'uptime_seconds') this.uptimeSeconds,
+      this.managed});
 
   factory _$ServiceInfoImpl.fromJson(Map<String, dynamic> json) =>
       _$$ServiceInfoImplFromJson(json);
 
   @override
   final String name;
+// 后端 systemd.ServiceInfo 无 display_name/category 字段；
+// short_name 为托管服务去前缀短名（系统服务等于 name）
   @override
-  @JsonKey(name: 'display_name')
-  final String displayName;
+  @JsonKey(name: 'short_name')
+  final String? shortName;
   @override
   final String? description;
-  @override
-  final String? category;
   @override
   final String state;
   @override
   @JsonKey(name: 'sub_state')
   final String? subState;
+  @override
+  @JsonKey(name: 'unit_file_state')
+  final String? unitFileState;
   @override
   final bool? enabled;
   @override
@@ -285,10 +305,12 @@ class _$ServiceInfoImpl implements _ServiceInfo {
   @override
   @JsonKey(name: 'uptime_seconds')
   final int? uptimeSeconds;
+  @override
+  final bool? managed;
 
   @override
   String toString() {
-    return 'ServiceInfo(name: $name, displayName: $displayName, description: $description, category: $category, state: $state, subState: $subState, enabled: $enabled, pid: $pid, memoryBytes: $memoryBytes, cpuPercent: $cpuPercent, uptimeSeconds: $uptimeSeconds)';
+    return 'ServiceInfo(name: $name, shortName: $shortName, description: $description, state: $state, subState: $subState, unitFileState: $unitFileState, enabled: $enabled, pid: $pid, memoryBytes: $memoryBytes, cpuPercent: $cpuPercent, uptimeSeconds: $uptimeSeconds, managed: $managed)';
   }
 
   @override
@@ -297,15 +319,15 @@ class _$ServiceInfoImpl implements _ServiceInfo {
         (other.runtimeType == runtimeType &&
             other is _$ServiceInfoImpl &&
             (identical(other.name, name) || other.name == name) &&
-            (identical(other.displayName, displayName) ||
-                other.displayName == displayName) &&
+            (identical(other.shortName, shortName) ||
+                other.shortName == shortName) &&
             (identical(other.description, description) ||
                 other.description == description) &&
-            (identical(other.category, category) ||
-                other.category == category) &&
             (identical(other.state, state) || other.state == state) &&
             (identical(other.subState, subState) ||
                 other.subState == subState) &&
+            (identical(other.unitFileState, unitFileState) ||
+                other.unitFileState == unitFileState) &&
             (identical(other.enabled, enabled) || other.enabled == enabled) &&
             (identical(other.pid, pid) || other.pid == pid) &&
             (identical(other.memoryBytes, memoryBytes) ||
@@ -313,7 +335,8 @@ class _$ServiceInfoImpl implements _ServiceInfo {
             (identical(other.cpuPercent, cpuPercent) ||
                 other.cpuPercent == cpuPercent) &&
             (identical(other.uptimeSeconds, uptimeSeconds) ||
-                other.uptimeSeconds == uptimeSeconds));
+                other.uptimeSeconds == uptimeSeconds) &&
+            (identical(other.managed, managed) || other.managed == managed));
   }
 
   @JsonKey(includeFromJson: false, includeToJson: false)
@@ -321,16 +344,17 @@ class _$ServiceInfoImpl implements _ServiceInfo {
   int get hashCode => Object.hash(
       runtimeType,
       name,
-      displayName,
+      shortName,
       description,
-      category,
       state,
       subState,
+      unitFileState,
       enabled,
       pid,
       memoryBytes,
       cpuPercent,
-      uptimeSeconds);
+      uptimeSeconds,
+      managed);
 
   /// Create a copy of ServiceInfo
   /// with the given fields replaced by the non-null parameter values.
@@ -350,36 +374,38 @@ class _$ServiceInfoImpl implements _ServiceInfo {
 
 abstract class _ServiceInfo implements ServiceInfo {
   const factory _ServiceInfo(
-          {required final String name,
-          @JsonKey(name: 'display_name') required final String displayName,
-          final String? description,
-          final String? category,
-          required final String state,
-          @JsonKey(name: 'sub_state') final String? subState,
-          final bool? enabled,
-          final int? pid,
-          @JsonKey(name: 'memory_bytes') final int? memoryBytes,
-          @JsonKey(name: 'cpu_percent') final double? cpuPercent,
-          @JsonKey(name: 'uptime_seconds') final int? uptimeSeconds}) =
-      _$ServiceInfoImpl;
+      {required final String name,
+      @JsonKey(name: 'short_name') final String? shortName,
+      final String? description,
+      required final String state,
+      @JsonKey(name: 'sub_state') final String? subState,
+      @JsonKey(name: 'unit_file_state') final String? unitFileState,
+      final bool? enabled,
+      final int? pid,
+      @JsonKey(name: 'memory_bytes') final int? memoryBytes,
+      @JsonKey(name: 'cpu_percent') final double? cpuPercent,
+      @JsonKey(name: 'uptime_seconds') final int? uptimeSeconds,
+      final bool? managed}) = _$ServiceInfoImpl;
 
   factory _ServiceInfo.fromJson(Map<String, dynamic> json) =
       _$ServiceInfoImpl.fromJson;
 
   @override
-  String get name;
+  String get name; // 后端 systemd.ServiceInfo 无 display_name/category 字段；
+// short_name 为托管服务去前缀短名（系统服务等于 name）
   @override
-  @JsonKey(name: 'display_name')
-  String get displayName;
+  @JsonKey(name: 'short_name')
+  String? get shortName;
   @override
   String? get description;
-  @override
-  String? get category;
   @override
   String get state;
   @override
   @JsonKey(name: 'sub_state')
   String? get subState;
+  @override
+  @JsonKey(name: 'unit_file_state')
+  String? get unitFileState;
   @override
   bool? get enabled;
   @override
@@ -393,6 +419,8 @@ abstract class _ServiceInfo implements ServiceInfo {
   @override
   @JsonKey(name: 'uptime_seconds')
   int? get uptimeSeconds;
+  @override
+  bool? get managed;
 
   /// Create a copy of ServiceInfo
   /// with the given fields replaced by the non-null parameter values.
