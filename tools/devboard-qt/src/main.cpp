@@ -3,6 +3,7 @@
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 
+#include "app/MirrorController.h"
 #include "core/AdbClient.h"
 
 int main(int argc, char *argv[]) {
@@ -21,6 +22,10 @@ int main(int argc, char *argv[]) {
     QObject::connect(
         &engine, &QQmlApplicationEngine::objectCreationFailed, &app,
         []() { QCoreApplication::exit(-1); }, Qt::QueuedConnection);
+
+    auto *mirror = new MirrorController(&app);
+    engine.rootContext()->setContextProperty(QStringLiteral("Mirror"), mirror);
+    engine.addImageProvider(QStringLiteral("mirror"), mirror->imageProvider());
     engine.loadFromModule("devboard", "Main");
     if (engine.rootObjects().isEmpty()) return -1;
 

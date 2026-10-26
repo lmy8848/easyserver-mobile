@@ -76,21 +76,35 @@ ApplicationWindow {
         anchors.fill: parent
         orientation: Qt.Horizontal
 
-        // 镜像区（M1 接入 MirrorView，M0 占位）
+        // 镜像区（M1：image provider 渲染解码帧；M2 换 scene graph 纹理）
         Rectangle {
             SplitView.fillWidth: true
             SplitView.minimumWidth: 480
             color: "#000000"
 
-            Column {
-                anchors.centerIn: parent
-                spacing: 12
+            Image {
+                anchors.fill: parent
+                fillMode: Image.PreserveAspectFit
+                source: Mirror.running ? ("image://mirror/last?" + Mirror.frameSeq)
+                                       : ""
+                asynchronous: true
+                cache: false
+            }
 
-                Label {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    text: qsTr("实时镜像 · M1 接入")
-                    color: "#9e9e9e"
-                }
+            Label {
+                anchors.centerIn: parent
+                visible: text !== ""
+                text: Mirror.running ? Mirror.status
+                                     : qsTr("未连接 · 点击「连接镜像」开始")
+                color: "#9e9e9e"
+            }
+
+            Button {
+                anchors.centerIn: parent
+                visible: !Mirror.running
+                text: qsTr("连接镜像")
+                enabled: Adb.currentSerial !== ""
+                onClicked: Mirror.connectTo(Adb.currentSerial)
             }
         }
 

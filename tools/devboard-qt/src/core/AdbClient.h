@@ -30,6 +30,9 @@ public:
     Q_INVOKABLE void connectWireless(const QString &hostPort);
     Q_INVOKABLE void runCommand(const QString &args);
 
+    /// 静态定位（供非 QML 模块复用，如 MirrorController）
+    static QString locateAdb();
+
 signals:
     void readyChanged();
     void busyChanged();

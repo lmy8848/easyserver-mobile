@@ -27,12 +27,10 @@ AdbClient::AdbClient(QObject *parent) : QObject(parent) {
     refreshDevices();
 }
 
-QString AdbClient::resolveAdb() {
-    if (!m_adbPath.isEmpty()) return m_adbPath;
-
+QString AdbClient::locateAdb() {
     const auto env = qEnvironmentVariable("DEVBOARD_ADB");
     QStringList candidates;
-    // 随包 adb（bin/scrcpy27/adb.exe）
+    // 随包 adb（tools/devboard/bin/scrcpy27/adb.exe）
     for (const auto &root : adbRoots()) {
         candidates << root + "/tools/devboard/bin/scrcpy27/adb.exe";
         candidates << root + "/bin/scrcpy27/adb.exe";
@@ -44,15 +42,22 @@ QString AdbClient::resolveAdb() {
         if (c.isEmpty()) continue;
         QProcess p;
         p.start(c, {QStringLiteral("version")});
-        if (p.waitForFinished(5000) && p.exitCode() == 0) {
-            m_adbPath = c;
-            m_ready = true;
-            emit readyChanged();
-            return m_adbPath;
-        }
+        if (p.waitForFinished(5000) && p.exitCode() == 0) return c;
     }
-    emit error(QStringLiteral("未找到 adb.exe，请设置环境变量 DEVBOARD_ADB"));
     return {};
+}
+
+QString AdbClient::resolveAdb() {
+    if (!m_adbPath.isEmpty()) return m_adbPath;
+    const QString found = locateAdb();
+    if (found.isEmpty()) {
+        emit error(QStringLiteral("未找到 adb.exe，请设置环境变量 DEVBOARD_ADB"));
+        return {};
+    }
+    m_adbPath = found;
+    m_ready = true;
+    emit readyChanged();
+    return m_adbPath;
 }
 
 void AdbClient::runAdb(const QStringList &args) {

@@ -17,7 +17,33 @@ qt_add_executable(devboard-qt
     src/main.cpp
     src/core/AdbClient.h
     src/core/AdbClient.cpp
+    src/core/ScrcpyServer.h
+    src/core/ScrcpyServer.cpp
+    src/core/VideoSocket.h
+    src/core/ControlSocket.h
+    src/media/FfmpegDecoder.h
+    src/app/StreamWorker.h
+    src/app/MirrorImageProvider.h
+    src/app/MirrorController.h
+    src/app/MirrorController.cpp
 )
+
+# FFmpeg（D:/devboard-deps/ffmpeg，gyan shared 构建：include + MSVC .lib）
+set(FFMPEG_ROOT "D:/devboard-deps/ffmpeg/ffmpeg-9.0.2-full_build-shared"
+    CACHE PATH "FFmpeg shared dev root")
+if (EXISTS "${FFMPEG_ROOT}/include/libavcodec/avcodec.h")
+    target_include_directories(devboard-qt PRIVATE "${FFMPEG_ROOT}/include")
+    target_link_libraries(devboard-qt PRIVATE
+        "${FFMPEG_ROOT}/lib/avcodec.lib"
+        "${FFMPEG_ROOT}/lib/avutil.lib"
+        "${FFMPEG_ROOT}/lib/swscale.lib"
+    )
+    file(GLOB FFMPEG_DLLS "${FFMPEG_ROOT}/bin/*.dll")
+    add_custom_command(TARGET devboard-qt POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${FFMPEG_DLLS} $<TARGET_FILE_DIR:devboard-qt>
+    )
+endif()
 
 qt_add_qml_module(devboard-qt
     URI devboard
