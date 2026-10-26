@@ -14,6 +14,8 @@ class MirrorController : public QObject {
     Q_PROPERTY(int frameSeq READ frameSeq NOTIFY frameSeqChanged)
     Q_PROPERTY(QString status READ status NOTIFY statusChanged)
     Q_PROPERTY(bool running READ running NOTIFY runningChanged)
+    Q_PROPERTY(int videoWidth READ videoWidth NOTIFY videoSizeChanged)
+    Q_PROPERTY(int videoHeight READ videoHeight NOTIFY videoSizeChanged)
 
 public:
     explicit MirrorController(QObject *parent = nullptr);
@@ -23,6 +25,17 @@ public:
 
     Q_INVOKABLE void connectTo(const QString &serial);
     Q_INVOKABLE void disconnect();
+
+    // 输入注入（QML 以归一化坐标调用，控制 socket 直达设备，<5ms）
+    Q_INVOKABLE void injectTouchDown(double xNorm, double yNorm);
+    Q_INVOKABLE void injectTouchMove(double xNorm, double yNorm);
+    Q_INVOKABLE void injectTouchUp(double xNorm, double yNorm);
+    Q_INVOKABLE void injectKeycode(int keycode);
+    Q_INVOKABLE void injectText(const QString &text);
+    Q_INVOKABLE void injectScroll(double xNorm, double yNorm, int steps);
+
+    int videoWidth() const { return m_videoW; }
+    int videoHeight() const { return m_videoH; }
 
     int frameSeq() const { return m_frameSeq; }
     QString status() const { return m_status; }
@@ -34,6 +47,8 @@ signals:
     void frameSeqChanged();
     void statusChanged(const QString &text);
     void runningChanged(bool running);
+    void videoSizeChanged();
+    void controlMessage(const QByteArray &msg);
 
 private slots:
     void onFrameReady(const QImage &img);
@@ -52,5 +67,7 @@ private:
     QString m_serial;
     QString m_status = QStringLiteral("未连接");
     int m_frameSeq = 0;
+    int m_videoW = 0;
+    int m_videoH = 0;
     bool m_running = false;
 };

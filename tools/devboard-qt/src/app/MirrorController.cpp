@@ -3,6 +3,7 @@
 #include <QCoreApplication>
 
 #include "../core/AdbClient.h"
+#include "../core/ControlMsg.h"
 #include <QDir>
 
 MirrorController::MirrorController(QObject *parent) : QObject(parent) {
@@ -51,6 +52,15 @@ void MirrorController::connectTo(const QString &serial) {
             &MirrorController::onWorkerStatus, Qt::QueuedConnection);
     connect(m_worker, &StreamWorker::failed, this,
             &MirrorController::onWorkerFailed, Qt::QueuedConnection);
+    connect(m_worker, &StreamWorker::videoSizeChanged, this,
+            [this](int w, int h) {
+                m_videoW = w;
+                m_videoH = h;
+                emit videoSizeChanged();
+            },
+            Qt::QueuedConnection);
+    connect(this, &MirrorController::controlMessage, m_worker,
+            &StreamWorker::sendControl, Qt::QueuedConnection);
     m_ioThread->start();
     // 阻塞读循环在 IO 线程运行
     QMetaObject::invokeMethod(m_worker, "run", Qt::QueuedConnection,
@@ -87,4 +97,34 @@ void MirrorController::onWorkerFailed(const QString &reason) {
     m_status = reason;
     emit statusChanged(m_status);
     disconnect();
+}
+
+void MirrorController::injectTouchDown(double xNorm, double yNorm) {
+    emit controlMessage(ControlMsg::buildInjectTouchEvent(
+        ControlMsg::ACTION_DOWN, ControlMsg::POINTER_ID_MOUSE, xNorm, yNorm));
+}
+
+void MirrorController::injectTouchMove(double xNorm, double yNorm) {
+    emit controlMessage(ControlMsg::buildInjectTouchEvent(
+        ControlMsg::ACTION_MOVE, ControlMsg::POINTER_ID_MOUSE, xNorm, yNorm));
+}
+
+void MirrorController::injectTouchUp(double xNorm, double yNorm) {
+    emit controlMessage(ControlMsg::buildInjectTouchEvent(
+        ControlMsg::ACTION_UP, ControlMsg::POINTER_ID_MOUSE, xNorm, yNorm));
+}
+
+void MirrorController::injectKeycode(int keycode) {
+    emit controlMessage(ControlMsg::buildInjectKeycode(
+        ControlMsg::ACTION_DOWN, keycode));
+    emit controlMessage(ControlMsg::buildInjectKeycode(
+        ControlMsg::ACTION_UP, keycode));
+}
+
+void MirrorController::injectText(const QString &text) {
+    emit controlMessage(ControlMsg::buildInjectText(text));
+}
+
+void MirrorController::injectScroll(double xNorm, double yNorm, int steps) {
+    emit controlMessage(ControlMsg::buildInjectScroll(xNorm, yNorm, steps));
 }

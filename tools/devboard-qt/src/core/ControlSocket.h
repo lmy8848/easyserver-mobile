@@ -1,9 +1,11 @@
 #pragma once
 
+#include <QByteArray>
 #include <QTcpSocket>
 
-/// control socket（M1：仅保持连接——server 必须两条连接都接入才会发数据）。
-/// M3 扩展：INJECT_TOUCH/KEYCODE/TEXT/SCROLL 消息序列化（PLAN 附录 A.5）。
+/// control socket：独立于 video socket 的控制通道。
+/// 线程约定：本对象归属 control 线程（send 仅在该线程调用）。
+/// 视频读循环每帧间不会阻塞本通道的写入。
 class ControlSocket : public QObject {
     Q_OBJECT
 
@@ -12,15 +14,22 @@ public:
         m_sock = new QTcpSocket(this);
     }
 
-    QTcpSocket *socket() const { return m_sock; }
-
+    /// 连接（在 control 线程内调用，阻塞至连上/超时）
     bool connectToHost(const QString &host, quint16 port,
                        int timeoutMs = 5000) {
         m_sock->connectToHost(host, port);
         return m_sock->waitForConnected(timeoutMs);
     }
 
-    void abort() { m_sock->abort(); }
+    bool isConnected() const {
+        return m_sock->state() == QAbstractSocket::ConnectedState;
+    }
+
+public slots:
+    void send(const QByteArray &msg) {
+        if (m_sock->state() == QAbstractSocket::ConnectedState)
+            m_sock->write(msg);
+    }
 
 private:
     QTcpSocket *m_sock = nullptr;

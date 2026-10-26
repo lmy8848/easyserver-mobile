@@ -29,9 +29,9 @@ public slots:
             return;
         }
         // 关键（PLAN A.2）：必须紧接着建 control 连接，否则 server 不发数据
-        ControlSocket control;
-        if (!control.connectToHost(QStringLiteral("127.0.0.1"),
-                                   static_cast<quint16>(port))) {
+        m_control = new ControlSocket(this);
+        if (!m_control->connectToHost(QStringLiteral("127.0.0.1"),
+                                      static_cast<quint16>(port))) {
             emit failed(QStringLiteral("control socket 连接失败"));
             return;
         }
@@ -55,6 +55,7 @@ public slots:
         codec = qFromBigEndian(codec);
         w = qFromBigEndian(w);
         h = qFromBigEndian(h);
+        emit videoSizeChanged(static_cast<int>(w), static_cast<int>(h));
         emit statusChanged(QStringLiteral("%1 · %2x%3")
                                .arg(deviceName)
                                .arg(w)
@@ -102,6 +103,8 @@ public slots:
             }
         }
         emit statusChanged(QStringLiteral("视频流已结束"));
+        m_control->deleteLater();
+        m_control = nullptr;
     }
 
     void requestStop() { m_stop = true; }
@@ -110,7 +113,14 @@ signals:
     void frameReady(const QImage &image);
     void statusChanged(const QString &text);
     void failed(const QString &reason);
+    void videoSizeChanged(int width, int height);
+
+public slots:
+    void sendControl(const QByteArray &msg) {
+        if (m_control) m_control->send(msg);
+    }
 
 private:
     QAtomicInt m_stop{0};
+    ControlSocket *m_control = nullptr;
 };
