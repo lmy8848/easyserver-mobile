@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QElapsedTimer>
 #include <QThread>
 #include <QTcpSocket>
 #include <QtEndian>
@@ -22,28 +23,47 @@ public slots:
     void run(const QString &serial, int port) {
         emit statusChanged(QStringLiteral("连接 video socket…"));
 
+        // adb forward 会先本地 accept 再向设备端建流：app_process 冷启动（约 1-2s）
+        // 期间连接会被立即关闭，表现为握手秒断。5s 内重试直到设备端 scrcpy 就绪。
+        QElapsedTimer deadline;
+        deadline.start();
         VideoSocket video;
-        if (!video.connectToHost(QStringLiteral("127.0.0.1"),
-                                 static_cast<quint16>(port))) {
-            emit failed(QStringLiteral("video socket 连接失败（forward 未生效？）"));
-            return;
-        }
-        // 关键（PLAN A.2）：必须紧接着建 control 连接，否则 server 不发数据
-        m_control = new ControlSocket(this);
-        if (!m_control->connectToHost(QStringLiteral("127.0.0.1"),
-                                      static_cast<quint16>(port))) {
-            emit failed(QStringLiteral("control socket 连接失败"));
-            return;
-        }
-        emit statusChanged(QStringLiteral("读取握手…"));
-
         char dummy = 0;
         QByteArray name(64, 0);
         char codecBuf[4] = {0};
         char whBuf[8] = {0};
-        if (!video.readExact(&dummy, 1) || !video.readExact(name.data(), 64)
-            || !video.readExact(codecBuf, 4) || !video.readExact(whBuf, 8)) {
-            emit failed(QStringLiteral("video 握手读取失败"));
+        bool handshakeOk = false;
+        while (!m_stop && deadline.elapsed() < 5000) {
+            video.abort(); // 复位旧连接状态（首次为 no-op）
+            if (!video.connectToHost(QStringLiteral("127.0.0.1"),
+                                     static_cast<quint16>(port))) {
+                QThread::msleep(200);
+                continue;
+            }
+            if (m_control) {
+                m_control->deleteLater();
+                m_control = nullptr;
+            }
+            // 关键（PLAN A.2）：必须紧接着建 control 连接，否则 server 不发数据
+            m_control = new ControlSocket(this);
+            if (!m_control->connectToHost(QStringLiteral("127.0.0.1"),
+                                          static_cast<quint16>(port))) {
+                QThread::msleep(200);
+                continue;
+            }
+            if (video.readExact(&dummy, 1, 2000) && video.readExact(name.data(), 64, 2000)
+                && video.readExact(codecBuf, 4, 2000)
+                && video.readExact(whBuf, 8, 2000)) {
+                handshakeOk = true;
+                qDebug() << "[worker] handshake ok, device="
+                         << QString::fromUtf8(name).trimmed();
+                break;
+            }
+            QThread::msleep(200); // server 未就绪（握手 EOF），重来
+        }
+        if (!handshakeOk) {
+            emit failed(m_stop ? QStringLiteral("已停止")
+                               : QStringLiteral("video 握手失败（5s 内设备端未就绪）"));
             return;
         }
         const QString deviceName =

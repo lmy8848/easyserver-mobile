@@ -11,13 +11,16 @@ constexpr auto kLocalSocket = "localabstract:scrcpy";
 } // namespace
 
 ScrcpyServer::ScrcpyServer(QObject *parent) : QObject(parent) {
-    // 设备端异常退出时同步给 UI
+    // 设备端异常退出时同步给 UI（adb shell 会把远端 stderr 并入 stdout，两路都读）
     connect(&m_shell, &QProcess::finished, this, [this](int code) {
         if (code != 0) {
-            emit serverError(
-                QStringLiteral("scrcpy-server 异常退出（%1）：%2")
-                    .arg(code)
-                    .arg(QString::fromUtf8(m_shell.readAllStandardError())));
+            const QString stdOut =
+                QString::fromUtf8(m_shell.readAllStandardOutput()).trimmed();
+            const QString stdErr =
+                QString::fromUtf8(m_shell.readAllStandardError()).trimmed();
+            emit serverError(QStringLiteral("scrcpy-server 异常退出（%1）：%2%3")
+                                 .arg(code)
+                                 .arg(stdOut, stdErr));
         }
     });
 }
@@ -75,7 +78,7 @@ bool ScrcpyServer::start(const QString &serial, int port, QString *error) {
         QStringLiteral("CLASSPATH=%1 app_process / com.genymobile.scrcpy.Server "
                        "%2 log_level=info audio=false video=true max_size=0 "
                        "max_fps=30 video_bit_rate=8000000 "
-                       "video_codec_options=low-latency=1:i-frame-interval=2 "
+                       "video_codec_options=low-latency=1,i-frame-interval=2 "
                        "stay_awake=true tunnel_forward=true "
                        "send_device_meta=true send_frame_meta=true "
                        "send_codec_meta=true")
