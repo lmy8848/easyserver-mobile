@@ -30,6 +30,11 @@ public:
     Q_INVOKABLE void connectWireless(const QString &hostPort);
     Q_INVOKABLE void runCommand(const QString &args);
 
+    /// 无线配对（adb pair，需手机「无线调试 → 配对码」页面的 IP:端口 与 6 位码）
+    Q_INVOKABLE void pairWireless(const QString &hostPort, const QString &code);
+    /// mDNS 扫描配对/连接服务，结果为 "kind|name|ip:port" 列表
+    Q_INVOKABLE void mdnsScan();
+
     /// 静态定位（供非 QML 模块复用，如 MirrorController）
     static QString locateAdb();
 
@@ -43,6 +48,8 @@ signals:
     void currentSerialChanged();
     void commandOutput(const QString &text);
     void error(const QString &message);
+    void pairFinished(bool ok, const QString &message);
+    void mdnsServices(const QStringList &services);
 
 private:
     QString resolveAdb();

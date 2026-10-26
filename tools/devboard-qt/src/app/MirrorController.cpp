@@ -32,26 +32,79 @@ MirrorController::MirrorController(QObject *parent) : QObject(parent) {
 
 void MirrorController::setAdbClient(QObject *adb) {
     m_adb = adb;
-    // adb 串口选出后自动连接镜像
+    // adb 串口选出后自动连接镜像；设备列表变化兜底（3s 轮询 → 掉线重连）
     connect(m_adb, SIGNAL(currentSerialChanged()), this,
             SLOT(onAdbSerialChanged()), Qt::QueuedConnection);
+    connect(m_adb, SIGNAL(devicesChanged()), this,
+            SLOT(onAdbDevicesChanged()), Qt::QueuedConnection);
+}
+
+bool MirrorController::isSerialOnline(const QString &serial) const {
+    const QVariantList devices = m_adb->property("devices").toList();
+    for (const auto &v : devices) {
+        const auto map = v.toMap();
+        if (map.value(QStringLiteral("serial")).toString() == serial
+            && map.value(QStringLiteral("online")).toBool())
+            return true;
+    }
+    return false;
 }
 
 void MirrorController::onAdbSerialChanged() {
     if (!m_autoConnect || m_running) return;
     const QString serial = m_adb->property("currentSerial").toString();
     if (serial.isEmpty()) return;
+    // 换目标 = 新意图，重试预算清零
+    m_retries = 0;
+    // 设备必须真实在线才连接（恢复持久化串口时设备可能尚未上线，交给 devicesChanged 兜底）
+    if (!isSerialOnline(serial)) {
+        qDebug() << "[mirror] serial selected but offline yet:" << serial;
+        return;
+    }
     qDebug() << "[mirror] auto-connect to" << serial;
     connectTo(serial);
 }
 
+void MirrorController::onAdbDevicesChanged() {
+    if (!m_autoConnect || m_running || m_userStopped) return;
+    const QString serial = m_adb->property("currentSerial").toString();
+    if (serial.isEmpty()) return;
+    if (!isSerialOnline(serial)) {
+        if (m_retries != 0) {
+            m_retries = 0; // 设备离线；重新上线时给满额重试预算
+            qDebug() << "[mirror] device offline, retry budget reset:" << serial;
+        }
+        return;
+    }
+    if (m_retries >= 6) {
+        const QString paused =
+            QStringLiteral("自动重连暂停（重试预算用尽）· 检查手机后点「连接镜像」");
+        if (m_status != paused) {
+            m_status = paused;
+            emit statusChanged(m_status);
+        }
+        return;
+    }
+    qDebug() << "[mirror] auto-connect attempt" << (m_retries + 1) << "/6 to" << serial;
+    connectTo(serial);
+}
+
 void MirrorController::connectTo(const QString &serial) {
-    qDebug() << "[connect] begin serial=" << serial;
+    qDebug() << "[connect] begin serial=" << serial
+             << "retries=" << m_retries << "userStopped=" << m_userStopped;
     if (m_running || serial.isEmpty()) return;
     m_serial = serial;
+    m_userStopped = false;
     qDebug() << "[connect] server create, jar=" << m_jarPath;
 
     m_server = new ScrcpyServer(this);
+    // 设备端 scrcpy 异常退出时给出诊断（编码器参数错误等 Java 侧报错都在 stderr）
+    connect(m_server, &ScrcpyServer::serverError, this,
+            [this](const QString &msg) {
+                qDebug() << "[connect] server error:" << msg;
+                m_status = msg;
+                emit statusChanged(m_status);
+            });
     m_server->setAdbPath(m_adbPath.isEmpty() ? AdbClient::locateAdb()
                                              : m_adbPath);
     m_server->setJarPath(m_jarPath);
@@ -60,6 +113,7 @@ void MirrorController::connectTo(const QString &serial) {
     qDebug() << "[connect] server.start...";
     if (!m_server->start(serial, port, &err)) {
         qDebug() << "[connect] server failed:" << err;
+        ++m_retries;
         m_status = err.isEmpty() ? QStringLiteral("server 启动失败") : err;
         emit statusChanged(m_status);
         m_server->deleteLater();
@@ -67,6 +121,8 @@ void MirrorController::connectTo(const QString &serial) {
         return;
     }
     qDebug() << "[connect] server ok, creating worker...";
+    // 注意：server 启动成功≠流可用，重试预算在 onFrameReady（真正出帧）时清零
+    m_firstFrameLogged = false;
     m_running = true;
     emit runningChanged(true);
     m_status = QStringLiteral("连接 video/control socket…");
@@ -103,6 +159,11 @@ void MirrorController::connectTo(const QString &serial) {
 
 void MirrorController::disconnect() {
     if (!m_running) return;
+    m_userStopped = true; // 手动断开：停止自动重连，直至下一次连接意图
+    stopAll(QStringLiteral("已断开"));
+}
+
+void MirrorController::stopAll(const QString &finalStatus) {
     m_worker->requestStop();
     m_server->stop(); // 杀 shell → video socket EOF → 读循环自然退出
     m_ioThread->quit();
@@ -112,11 +173,16 @@ void MirrorController::disconnect() {
     m_worker = nullptr;
     m_running = false;
     emit runningChanged(false);
-    m_status = QStringLiteral("已断开");
+    m_status = finalStatus;
     emit statusChanged(m_status);
 }
 
 void MirrorController::onFrameReady(const QImage &img) {
+    m_retries = 0; // 有真帧流入 = 会话健康，重试预算清零
+    if (!m_firstFrameLogged) {
+        m_firstFrameLogged = true;
+        qDebug() << "[mirror] first frame decoded" << img.size();
+    }
     m_provider->setLast(img);
     ++m_frameSeq;
 
@@ -141,9 +207,9 @@ void MirrorController::onWorkerStatus(const QString &text) {
 }
 
 void MirrorController::onWorkerFailed(const QString &reason) {
-    m_status = reason;
-    emit statusChanged(m_status);
-    disconnect();
+    qDebug() << "[mirror] worker failed:" << reason << "retries so far:" << m_retries;
+    ++m_retries; // 由 devicesChanged 轮询按预算重试（不算用户主动断开）
+    if (m_running) stopAll(reason);
 }
 
 void MirrorController::injectTouchDown(double xNorm, double yNorm) {

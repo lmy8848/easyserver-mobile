@@ -65,11 +65,13 @@ signals:
 private slots:
     void onFrameReady(const QImage &img);
     void onAdbSerialChanged();
+    void onAdbDevicesChanged();
     void onWorkerStatus(const QString &text);
     void onWorkerFailed(const QString &reason);
 
 private:
     void stopAll(const QString &finalStatus);
+    bool isSerialOnline(const QString &serial) const;
 
     QObject *m_adb = nullptr;
     ScrcpyServer *m_server = nullptr;
@@ -79,6 +81,8 @@ private:
     QTimer *m_wakeTimer = nullptr;
     bool m_stopping = false;
     bool m_autoConnect = true;
+    bool m_userStopped = false; // 手动断开后不再自动重连，直至新的连接意图
+    int m_retries = 0;          // 自动重试预算：设备每次重新上线时清零
     QString m_adbPath;
     QString m_jarPath;
     QString m_serial;
@@ -89,6 +93,7 @@ private:
     int m_fps = 0;
     int m_bitrateKbps = 0;
     int m_statFrames = 0;
+    bool m_firstFrameLogged = false;
     qint64 m_statBytes = 0;
     QDateTime m_statStart;
     bool m_running = false;

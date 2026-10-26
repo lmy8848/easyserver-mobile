@@ -203,6 +203,69 @@ void AdbClient::connectWireless(const QString &hostPort) {
     proc->start();
 }
 
+void AdbClient::pairWireless(const QString &hostPort, const QString &code) {
+    if (m_busy || hostPort.isEmpty() || code.isEmpty()) return;
+    m_busy = true;
+    emit busyChanged();
+
+    auto *proc = new QProcess(this);
+    proc->setProgram(resolveAdb());
+    proc->setArguments({QStringLiteral("pair"), hostPort, code});
+    connect(proc, &QProcess::finished, this,
+            [this, proc, hostPort](int, QProcess::ExitStatus) {
+                const QString out =
+                    QString::fromUtf8(proc->readAllStandardOutput()).trimmed();
+                const QString err =
+                    QString::fromUtf8(proc->readAllStandardError()).trimmed();
+                proc->deleteLater();
+                m_busy = false;
+                emit busyChanged();
+                const bool ok = out.contains(QLatin1String("Success"));
+                emit pairFinished(ok, ok ? QStringLiteral("配对成功 ") + hostPort
+                                         : (out.isEmpty() ? err : out));
+            });
+    proc->start();
+}
+
+void AdbClient::mdnsScan() {
+    if (m_busy) return;
+    m_busy = true;
+    emit busyChanged();
+
+    auto *proc = new QProcess(this);
+    proc->setProgram(resolveAdb());
+    proc->setArguments({QStringLiteral("mdns"), QStringLiteral("services")});
+    connect(proc, &QProcess::finished, this, [this, proc](int, QProcess::ExitStatus) {
+        const QString out = QString::fromUtf8(proc->readAllStandardOutput());
+        const QString err = QString::fromUtf8(proc->readAllStandardError());
+        proc->deleteLater();
+        m_busy = false;
+        emit busyChanged();
+
+        QStringList entries;
+        static const QRegularExpression re(
+            QStringLiteral("(\\S+\\._adb-tls-(?:pairing|connect)\\._tcp)"
+                           "\\s+(\\d+\\.\\d+\\.\\d+\\.\\d+:\\d+)"));
+        auto it = re.globalMatch(out);
+        while (it.hasNext()) {
+            const auto m = it.next();
+            const QString name = m.captured(1);
+            const QString addr = m.captured(2);
+            const QString kind = name.contains(QLatin1String("pairing"))
+                                     ? QStringLiteral("pairing")
+                                     : QStringLiteral("connect");
+            entries << kind + QLatin1Char('|') + name + QLatin1Char('|') + addr;
+        }
+        emit mdnsServices(entries);
+        if (entries.isEmpty()) {
+            const QString raw = out.trimmed().isEmpty() ? err.trimmed() : out.trimmed();
+            emit commandOutput(QStringLiteral("mDNS 未发现配对/连接服务") +
+                               (raw.isEmpty() ? QString() : QStringLiteral("：") + raw));
+        }
+    });
+    proc->start();
+}
+
 void AdbClient::runCommand(const QString &args) {
     const QString trimmed = args.trimmed();
     if (trimmed.isEmpty()) return;

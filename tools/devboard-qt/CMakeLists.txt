@@ -26,6 +26,8 @@ qt_add_executable(devboard-qt
     src/app/MirrorImageProvider.h
     src/app/MirrorController.h
     src/app/MirrorController.cpp
+    src/app/DeviceTools.h
+    src/app/DeviceTools.cpp
 )
 
 # FFmpeg（D:/devboard-deps/ffmpeg，gyan shared 构建：include + MSVC .lib）
