@@ -28,6 +28,8 @@ dependencies:
   flutter_secure_storage: ^9.2.0
   qr_flutter: ^4.1.0
   permission_handler: ^13.0.2
+  local_auth: ^3.0.2
+  package_info_plus: ^9.0.1
 
 dev_dependencies:
   flutter_test:

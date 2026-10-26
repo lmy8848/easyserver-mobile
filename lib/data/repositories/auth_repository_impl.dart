@@ -124,10 +124,10 @@ class AuthRepositoryImpl implements AuthRepository {
   @override
   Future<List<Map<String, dynamic>>> getSessions() async {
     final json = await _api.get('/auth/sessions');
-    if (json case List l) {
-      return l.map((e) => e as Map<String, dynamic>).toList();
-    }
-    return [];
+    // 后端返回裸列表；_unwrapResponse 会包成 {'_items': [...]}
+    final items =
+        (json['_items'] ?? json['items'] ?? const []) as List<dynamic>;
+    return items.map((e) => e as Map<String, dynamic>).toList();
   }
 
   @override

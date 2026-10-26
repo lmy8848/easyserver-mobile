@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/app_toast.dart';
+import '../../providers/app_settings_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/home_state.dart';
 import '../../providers/notification_provider.dart';
@@ -27,16 +28,28 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       // provider 层操作反馈（容器启停等）通过全局 Toast 弹出
       AppToast.bind(ScaffoldMessenger.of(context));
     });
-    // 通知轮询：未读角标 + 新通知 SnackBar（SSE 适合 Web 常连接，移动端轮询更省电）
-    ref.read(notificationProvider.notifier).startPolling(onNew: (item) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text('${item.title}: ${item.message}'),
-              duration: const Duration(seconds: 3)),
+    // 通知轮询：未读角标 + 新通知 SnackBar（SSE 适合 Web 常连接，移动端轮询更省电）。
+    // 提示开关与轮询间隔来自设置；设置变化时重启轮询。
+    _startNotifyPolling();
+    ref.listenManual(appSettingsProvider, (_, __) => _startNotifyPolling());
+  }
+
+  void _startNotifyPolling() {
+    final settings = ref.read(appSettingsProvider);
+    ref.read(notificationProvider.notifier).startPolling(
+          intervalSec: settings.notifyIntervalSec,
+          onNew: settings.notifyEnabled
+              ? (item) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                          content: Text('${item.title}: ${item.message}'),
+                          duration: const Duration(seconds: 3)),
+                    );
+                  }
+                }
+              : null,
         );
-      }
-    });
   }
 
   @override
@@ -214,7 +227,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               context.push('/lanshare');
             }),
             const Divider(),
-            _drawerItem(Icons.manage_accounts, '账户与安全', () {
+            _drawerItem(Icons.settings_outlined, '设置与安全', () {
               Navigator.pop(context);
               context.push('/profile');
             }),

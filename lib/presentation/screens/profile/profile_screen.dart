@@ -1,13 +1,18 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import '../../../di/providers.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/dashboard_settings_provider.dart';
+import '../../providers/app_settings_provider.dart';
+import '../../providers/theme_provider.dart';
 
-/// 账户与安全：用户信息、两步验证（TOTP）管理、会话管理（踢出）、修改密码。
-/// 数据层 API 均已就绪（authRepository），此页完成 UI 接线。
+/// 设置与安全：账户安全（TOTP/登录会话/修改密码）、应用设置（外观/
+/// 应用锁/通知/服务器）、关于（版本/许可证）。
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
   @override
@@ -18,12 +23,19 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   bool _totpEnabled = false;
   bool _loadingTotp = true;
   List<Map<String, dynamic>> _sessions = [];
+  Timer? _sessionsTimer;
 
   @override
   void initState() {
     super.initState();
     _loadTotpStatus();
     _loadSessions();
+    _loadAppVersion();
+    _checkBiometrics();
+    // 在线设备实时刷新（30s）
+    _sessionsTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) _loadSessions();
+    });
   }
 
   Future<void> _loadTotpStatus() async {
@@ -37,6 +49,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     } catch (e) {
       if (mounted) setState(() => _loadingTotp = false);
     }
+  }
+
+  Future<void> _checkBiometrics() async {
+    final supported =
+        await ref.read(appSettingsProvider.notifier).deviceSupportsBiometrics();
+    if (!mounted) return;
+    setState(() => _biometricsAvailable = supported);
   }
 
   Future<void> _loadSessions() async {
@@ -53,157 +72,352 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('账户与安全')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          // ── 用户信息 ──
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  CircleAvatar(
-                    radius: 28,
-                    child: Text(
-                      user?.username.isNotEmpty == true
-                          ? user!.username[0].toUpperCase()
-                          : 'U',
-                      style: const TextStyle(fontSize: 22),
+      appBar: AppBar(title: const Text('设置与安全')),
+      body: RefreshIndicator(
+        onRefresh: () async {
+          await _loadSessions();
+          await _loadTotpStatus();
+        },
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            // ── 用户信息 ──
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 28,
+                      child: Text(
+                        user?.username.isNotEmpty == true
+                            ? user!.username[0].toUpperCase()
+                            : 'U',
+                        style: const TextStyle(fontSize: 22),
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 16),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(user?.username ?? '-',
-                          style: theme.textTheme.titleLarge),
-                      Text('角色: ${user?.role ?? '-'}',
-                          style: theme.textTheme.bodySmall),
-                    ],
+                    const SizedBox(width: 16),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(user?.username ?? '-',
+                            style: theme.textTheme.titleLarge),
+                        Text('角色: ${user?.role ?? '-'}',
+                            style: theme.textTheme.bodySmall),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            // ── 两步验证 ──
+            Card(
+              child: Column(
+                children: [
+                  ListTile(
+                    leading: const Icon(Icons.security),
+                    title: const Text('两步验证（TOTP）'),
+                    subtitle: Text(
+                        _loadingTotp ? '加载中…' : (_totpEnabled ? '已启用' : '未启用')),
+                    trailing: _loadingTotp
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2))
+                        : FilledButton.tonal(
+                            onPressed: _totpEnabled
+                                ? _showDisableTotpDialog
+                                : _startTotpSetup,
+                            child: Text(_totpEnabled ? '禁用' : '启用'),
+                          ),
                   ),
                 ],
               ),
             ),
-          ),
-          const SizedBox(height: 12),
+            const SizedBox(height: 12),
 
-          // ── 两步验证 ──
-          Card(
-            child: Column(
-              children: [
-                ListTile(
-                  leading: const Icon(Icons.security),
-                  title: const Text('两步验证（TOTP）'),
-                  subtitle: Text(
-                      _loadingTotp ? '加载中…' : (_totpEnabled ? '已启用' : '未启用')),
-                  trailing: _loadingTotp
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2))
-                      : FilledButton.tonal(
-                          onPressed: _totpEnabled
-                              ? _showDisableTotpDialog
-                              : _startTotpSetup,
-                          child: Text(_totpEnabled ? '禁用' : '启用'),
+            // ── 会话管理 ──
+            Card(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  ListTile(
+                    leading: const Icon(Icons.devices),
+                    title: Text('登录会话（${_sessions.length} 台在线设备）'),
+                    trailing: _sessions.length > 1
+                        ? TextButton(
+                            onPressed: _kickAllOthers,
+                            child: const Text('踢出其他'))
+                        : null,
+                  ),
+                  if (_sessions.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
+                      child:
+                          Text('暂无会话数据', style: TextStyle(color: Colors.grey)),
+                    )
+                  else
+                    ..._sessions.map((s) {
+                      final isCurrent = s['is_current'] == true;
+                      final token = (s['token'] as String? ?? '');
+                      final clientType = s['client_type'] as String? ?? '';
+                      final deviceIcon = clientType == 'mobile'
+                          ? Icons.smartphone
+                          : clientType == 'web'
+                              ? Icons.computer
+                              : Icons.devices_other;
+                      return ListTile(
+                        dense: true,
+                        leading: Icon(
+                            isCurrent ? Icons.verified_user : deviceIcon,
+                            color: isCurrent ? Colors.green : Colors.grey),
+                        title: Text(
+                          '${isCurrent ? "本机（当前）" : "在线设备"} · ${_clientHint(s['user_agent'] as String?)}',
+                          style: const TextStyle(fontSize: 14),
                         ),
-                ),
-              ],
+                        subtitle: Text(
+                          '${s['ip'] ?? '-'} · ${clientType.toUpperCase()} · 登录 ${_fmtTime(s['login_at'] as String?)}',
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                        trailing: isCurrent
+                            ? null
+                            : IconButton(
+                                icon: const Icon(Icons.logout, size: 18),
+                                tooltip: '踢出',
+                                onPressed: () => _kickSession(token),
+                              ),
+                      );
+                    }),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(height: 12),
+            const SizedBox(height: 12),
 
-          // ── 会话管理 ──
-          Card(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                ListTile(
-                  leading: const Icon(Icons.devices),
-                  title: Text('登录会话（${_sessions.length}）'),
-                  trailing: _sessions.length > 1
-                      ? TextButton(
-                          onPressed: _kickAllOthers, child: const Text('踢出其他'))
-                      : null,
-                ),
-                if (_sessions.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
-                    child: Text('暂无会话数据', style: TextStyle(color: Colors.grey)),
-                  )
-                else
-                  ..._sessions.map((s) {
-                    final isCurrent = s['is_current'] == true;
-                    final token = (s['token'] as String? ?? '');
-                    return ListTile(
-                      dense: true,
-                      leading: Icon(
-                          isCurrent ? Icons.phone_iphone : Icons.devices_other,
-                          color: isCurrent ? Colors.green : Colors.grey),
-                      title: Text(
-                        '${isCurrent ? "本机" : "其他设备"} · ${_clientHint(s['user_agent'] as String?)}',
-                        style: const TextStyle(fontSize: 14),
-                      ),
-                      subtitle: Text(
-                        '${s['ip'] ?? '-'} · ${s['created_at'] ?? '-'}',
-                        style: const TextStyle(fontSize: 12),
-                      ),
-                      trailing: isCurrent
-                          ? null
-                          : IconButton(
-                              icon: const Icon(Icons.logout, size: 18),
-                              tooltip: '踢出',
-                              onPressed: () => _kickSession(token),
-                            ),
-                    );
-                  }),
-              ],
+            // ── 应用设置 ──
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 4, 0, 8),
+              child: Text('应用设置',
+                  style:
+                      theme.textTheme.titleSmall?.copyWith(color: Colors.grey)),
             ),
-          ),
-          const SizedBox(height: 12),
-
-          // ── 修改密码 / 刷新间隔 / 服务器 / 退出 ──
-          Card(
-            child: Column(
-              children: [
-                ListTile(
-                  leading: const Icon(Icons.password),
-                  title: const Text('修改密码'),
-                  onTap: _showChangePasswordDialog,
-                ),
-                ListTile(
-                  leading: const Icon(Icons.refresh),
-                  title: const Text('仪表盘刷新间隔'),
-                  subtitle:
-                      Text(_refreshLabel(ref.watch(dashboardRefreshProvider))),
-                  onTap: _showRefreshIntervalDialog,
-                ),
-                ListTile(
-                  leading: const Icon(Icons.dns),
-                  title: const Text('服务器配置'),
-                  subtitle:
-                      Text(ref.watch(serverConfigProvider)?.host ?? '未配置'),
-                  onTap: () => context.push('/setup'),
-                ),
-                ListTile(
-                  leading: const Icon(Icons.receipt_long),
-                  title: const Text('运行日志'),
-                  subtitle: const Text('全局异常与运行事件记录'),
-                  onTap: () => context.push('/logs'),
-                ),
-                ListTile(
-                  leading: const Icon(Icons.logout, color: Colors.red),
-                  title:
-                      const Text('退出登录', style: TextStyle(color: Colors.red)),
-                  onTap: () => _confirmLogout(context),
-                ),
-              ],
+            Card(
+              child: Column(
+                children: [
+                  ListTile(
+                    leading: const Icon(Icons.dark_mode_outlined),
+                    title: const Text('外观'),
+                    subtitle: Text(_themeLabel(ref.watch(themeModeProvider))),
+                    onTap: _showThemeDialog,
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.fingerprint),
+                    title: const Text('应用锁'),
+                    subtitle: Text(_appLockSubtitle()),
+                    trailing: Switch(
+                      value: ref.watch(appSettingsProvider).appLockEnabled,
+                      onChanged: (v) => _toggleAppLock(v),
+                    ),
+                  ),
+                  SwitchListTile(
+                    secondary: const Icon(Icons.notifications_outlined),
+                    title: const Text('新通知提示'),
+                    subtitle: const Text('收到新通知时在 App 内弹提示'),
+                    value: ref.watch(appSettingsProvider).notifyEnabled,
+                    onChanged: (v) => ref
+                        .read(appSettingsProvider.notifier)
+                        .setNotifyEnabled(v),
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.timer_outlined),
+                    title: const Text('通知刷新间隔'),
+                    subtitle: Text(
+                        '每 ${ref.watch(appSettingsProvider).notifyIntervalSec} 秒'),
+                    onTap: _showNotifyIntervalDialog,
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.password),
+                    title: const Text('修改密码'),
+                    onTap: _showChangePasswordDialog,
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.refresh),
+                    title: const Text('仪表盘刷新间隔'),
+                    subtitle: Text(
+                        _refreshLabel(ref.watch(dashboardRefreshProvider))),
+                    onTap: _showRefreshIntervalDialog,
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.dns),
+                    title: const Text('服务器配置'),
+                    subtitle:
+                        Text(ref.watch(serverConfigProvider)?.host ?? '未配置'),
+                    onTap: () => context.push('/setup'),
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.receipt_long),
+                    title: const Text('运行日志'),
+                    subtitle: const Text('全局异常与运行事件记录'),
+                    onTap: () => context.push('/logs'),
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.logout, color: Colors.red),
+                    title:
+                        const Text('退出登录', style: TextStyle(color: Colors.red)),
+                    onTap: () => _confirmLogout(context),
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+            const SizedBox(height: 12),
+            // ── 关于 ──
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 4, 0, 8),
+              child: Text('关于',
+                  style:
+                      theme.textTheme.titleSmall?.copyWith(color: Colors.grey)),
+            ),
+            Card(
+              child: Column(
+                children: [
+                  ListTile(
+                    leading: const Icon(Icons.info_outline),
+                    title: const Text('版本'),
+                    trailing: Text(_appVersion,
+                        style: theme.textTheme.bodySmall
+                            ?.copyWith(color: Colors.grey)),
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.article_outlined),
+                    title: const Text('开源许可证'),
+                    onTap: () => showLicensePage(
+                        context: context, applicationName: 'EasyServer Mobile'),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
+  }
+
+  String _appVersion = '…';
+  bool _biometricsAvailable = false;
+
+  String _appLockSubtitle() {
+    if (!ref.watch(appSettingsProvider).appLockEnabled) {
+      return _biometricsAvailable ? '关闭 · 回到前台需验证身份' : '本机不支持生物识别';
+    }
+    return _biometricsAvailable ? '开启 · 指纹/面容解锁' : '已开启';
+  }
+
+  Future<void> _toggleAppLock(bool enable) async {
+    if (enable) {
+      final supported = await ref
+          .read(appSettingsProvider.notifier)
+          .deviceSupportsBiometrics();
+      if (!mounted) return;
+      if (!supported) {
+        setState(() => _biometricsAvailable = false);
+        _snack('本机不支持生物识别（或未录入指纹/面容），无法开启应用锁');
+        return;
+      }
+      // 开启前先验证一次身份，确认是本人操作
+      final ok = await ref.read(appSettingsProvider.notifier).authenticate();
+      if (!mounted) return;
+      if (!ok) {
+        _snack('验证未通过，未开启应用锁');
+        return;
+      }
+    }
+    await ref.read(appSettingsProvider.notifier).setAppLockEnabled(enable);
+    if (!mounted) return;
+    setState(() => _biometricsAvailable = true);
+    _snack(enable ? '应用锁已开启' : '应用锁已关闭');
+  }
+
+  Future<void> _showNotifyIntervalDialog() async {
+    final choice = await showModalBottomSheet<int>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text('通知刷新间隔'),
+            ),
+            ...[15, 30, 60, 120].map(
+              (s) => ListTile(
+                title: Text('每 $s 秒'),
+                trailing: ref.watch(appSettingsProvider).notifyIntervalSec == s
+                    ? const Icon(Icons.check)
+                    : null,
+                onTap: () => Navigator.pop(ctx, s),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (choice != null) {
+      await ref.read(appSettingsProvider.notifier).setNotifyInterval(choice);
+    }
+  }
+
+  Future<void> _loadAppVersion() async {
+    final info = await PackageInfo.fromPlatform();
+    if (!mounted) return;
+    setState(() => _appVersion = '${info.version} (${info.buildNumber})');
+  }
+
+  String _themeLabel(ThemeMode m) => switch (m) {
+        ThemeMode.light => '浅色',
+        ThemeMode.dark => '深色',
+        _ => '跟随系统',
+      };
+
+  Future<void> _showThemeDialog() async {
+    final choice = await showModalBottomSheet<ThemeMode>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text('外观'),
+            ),
+            ...[
+              (ThemeMode.system, '跟随系统'),
+              (ThemeMode.light, '浅色'),
+              (ThemeMode.dark, '深色'),
+            ].map(
+              (e) => ListTile(
+                title: Text(e.$2),
+                trailing: ref.watch(themeModeProvider) == e.$1
+                    ? const Icon(Icons.check)
+                    : null,
+                onTap: () => Navigator.pop(ctx, e.$1),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (choice != null) {
+      await ref.read(themeModeProvider.notifier).setMode(choice);
+    }
+  }
+
+  String _fmtTime(String? iso) {
+    if (iso == null || iso.isEmpty) return '-';
+    final t = DateTime.tryParse(iso);
+    if (t == null) return iso;
+    final local = t.toLocal();
+    return '${local.month}/${local.day} ${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
   }
 
   String _refreshLabel(int seconds) =>
@@ -233,6 +447,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     if (choice != null) {
       await ref.read(dashboardRefreshProvider.notifier).setInterval(choice);
     }
+  }
+
+  @override
+  void dispose() {
+    _sessionsTimer?.cancel();
+    super.dispose();
   }
 
   String _clientHint(String? ua) {

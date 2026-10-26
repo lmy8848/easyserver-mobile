@@ -46,10 +46,11 @@ class NotificationNotifier extends StateNotifier<NotificationState> {
   NotificationNotifier(this._ref) : super(const NotificationState());
 
   /// 启动 30s 未读数轮询（首次拉取也刷新列表）。返回新通知的回调供 UI 弹 SnackBar。
-  void startPolling({void Function(NotificationItem item)? onNew}) {
+  void startPolling(
+      {void Function(NotificationItem item)? onNew, int intervalSec = 30}) {
     _timer?.cancel();
     _refresh(announceNew: false);
-    _timer = Timer.periodic(const Duration(seconds: 30), (_) {
+    _timer = Timer.periodic(Duration(seconds: intervalSec), (_) {
       _refresh(onNew: onNew);
     });
   }
