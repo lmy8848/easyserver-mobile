@@ -184,7 +184,14 @@ void MirrorController::onFrameReady(const QImage &img) {
         qDebug() << "[mirror] first frame decoded" << img.size();
     }
     m_provider->setLast(img);
-    ++m_frameSeq;
+    // UI 节流：帧照常解码（provider 永远持有最新），但 QML 重绘限到 ~25fps，
+    // 且每次请求直接取最新帧——排队中的旧 URL 请求天然作废，延迟不再累积。
+    const QDateTime uiNow = QDateTime::currentDateTime();
+    if (!m_lastUiEmit.isValid() || m_lastUiEmit.msecsTo(uiNow) >= 40) {
+        m_lastUiEmit = uiNow;
+        ++m_frameSeq;
+        emit frameSeqChanged(); // 驱动 QML Image 重新请求 provider（缺失即黑屏）
+    }
 
     // fps / 码率统计（1s 滑动窗口）
     ++m_statFrames;

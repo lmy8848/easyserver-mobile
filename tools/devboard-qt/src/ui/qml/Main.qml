@@ -103,7 +103,7 @@ ApplicationWindow {
                 fillMode: Image.PreserveAspectFit
                 source: Mirror.running ? ("image://mirror/last?" + Mirror.frameSeq)
                                        : ""
-                asynchronous: true
+                asynchronous: false // 同步取帧：不吃线程池排队，延迟最低
                 cache: false
             }
 

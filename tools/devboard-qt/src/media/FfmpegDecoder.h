@@ -90,16 +90,23 @@ private:
 
     QImage convert(AVFrame *f) {
         if (f->format != AV_PIX_FMT_YUV420P) return QImage(); // scrcpy 固定 yuv420p
+        // 解码端直接缩到 ≤720 宽：显示区也就几百像素宽，全尺寸 RGBA（1080x2400
+        // ≈ 10MB/帧）会让 QML 纹理上传成为瓶颈；缩到 720 宽 ≈ 2.6MB/帧。
+        int dstW = f->width, dstH = f->height;
+        if (dstW > 720) {
+            dstW = 720;
+            dstH = (f->height * 720 + f->width / 2) / f->width;
+        }
         if (m_swsW != f->width || m_swsH != f->height || !m_sws) {
             if (m_sws) sws_freeContext(m_sws);
             m_sws = sws_getContext(f->width, f->height, AV_PIX_FMT_YUV420P,
-                                   f->width, f->height, AV_PIX_FMT_RGBA,
+                                   dstW, dstH, AV_PIX_FMT_RGBA,
                                    SWS_FAST_BILINEAR, nullptr, nullptr, nullptr);
             m_swsW = f->width;
             m_swsH = f->height;
         }
         if (!m_sws) return QImage();
-        QImage img(f->width, f->height, QImage::Format_RGBA8888);
+        QImage img(dstW, dstH, QImage::Format_RGBA8888);
         uint8_t *dst[] = {img.bits()};
         int dstStride[] = {static_cast<int>(img.bytesPerLine())};
         sws_scale(m_sws, f->data, f->linesize, 0, f->height, dst, dstStride);

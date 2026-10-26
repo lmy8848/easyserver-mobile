@@ -15,14 +15,11 @@ public:
                         const QSize &requestedSize) override {
         QMutexLocker locker(&m_mutex);
         Q_UNUSED(id);
+        Q_UNUSED(requestedSize); // 等比缩放交给 Image.fillMode，避免每帧平滑缩放
         if (m_last.isNull()) {
             QImage blank(16, 16, QImage::Format_RGBA8888);
             blank.fill(Qt::black);
             return blank;
-        }
-        if (requestedSize.isValid() && requestedSize != m_last.size()) {
-            return m_last.scaled(requestedSize, Qt::KeepAspectRatio,
-                                 Qt::SmoothTransformation);
         }
         if (size) *size = m_last.size();
         return m_last;

@@ -93,6 +93,7 @@ private:
     int m_fps = 0;
     int m_bitrateKbps = 0;
     int m_statFrames = 0;
+    QDateTime m_lastUiEmit; // QML 重绘节流（~25fps）
     bool m_firstFrameLogged = false;
     qint64 m_statBytes = 0;
     QDateTime m_statStart;
