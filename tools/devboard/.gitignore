@@ -46,3 +46,10 @@ app.*.map.json
 
 # scrcpy 二进制（见 README 下载说明）
 bin/
+
+# 脚手架输出
+screenshots/
+recordings/
+
+# 上次连接目标（运行时产物）
+.devboard_last_connect
