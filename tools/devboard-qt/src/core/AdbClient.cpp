@@ -28,6 +28,8 @@ AdbClient::AdbClient(QObject *parent) : QObject(parent) {
 }
 
 QString AdbClient::locateAdb() {
+    static QString cached; // 进程内缓存（adb 路径运行期不变）
+    if (!cached.isEmpty()) return cached;
     const auto env = qEnvironmentVariable("DEVBOARD_ADB");
     QStringList candidates;
     // 随包 adb（tools/devboard/bin/scrcpy27/adb.exe）
@@ -42,9 +44,26 @@ QString AdbClient::locateAdb() {
         if (c.isEmpty()) continue;
         QProcess p;
         p.start(c, {QStringLiteral("version")});
-        if (p.waitForFinished(5000) && p.exitCode() == 0) return c;
+        if (p.waitForFinished(5000) && p.exitCode() == 0) {
+            cached = c;
+            return cached;
+        }
     }
     return {};
+}
+
+void AdbClient::ensureAwake(const QString &serial) {
+    const QString adb = locateAdb();
+    if (adb.isEmpty()) return;
+    auto *p = new QProcess();
+    p->setProgram(adb);
+    p->setArguments({
+        QStringLiteral("-s"), serial, QStringLiteral("shell"),
+        QStringLiteral("dumpsys power | grep mWakefulness= | grep -q Awake || "
+                       "input keyevent KEYCODE_WAKEUP"),
+    });
+    connect(p, &QProcess::finished, p, &QProcess::deleteLater);
+    p->start();
 }
 
 QString AdbClient::resolveAdb() {

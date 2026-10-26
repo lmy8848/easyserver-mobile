@@ -161,10 +161,16 @@ ApplicationWindow {
         Material.elevation: 0
         Label {
             anchors.centerIn: parent
-            text: Adb.ready
-                  ? qsTr("就绪 · 在线设备 %1 台 · 当前 %2")
+            text: {
+                if (!Adb.ready)
+                    return qsTr("adb 未就绪：请设置 DEVBOARD_ADB")
+                if (Mirror.running)
+                    return qsTr("● H.264 %1fps · %2 kbps · %3x%4")
+                        .arg(Mirror.fps).arg(Mirror.bitrateKbps)
+                        .arg(Mirror.videoWidth).arg(Mirror.videoHeight)
+                return qsTr("就绪 · 在线设备 %1 台 · 当前 %2")
                         .arg(Adb.devices.length).arg(Adb.currentSerial || "-")
-                  : qsTr("adb 未就绪：请设置 DEVBOARD_ADB 或确认 bin/scrcpy27/adb.exe 存在")
+            }
             font.pixelSize: 11
             color: Material.hintTextColor
         }

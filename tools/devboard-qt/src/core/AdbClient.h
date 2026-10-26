@@ -33,6 +33,9 @@ public:
     /// 静态定位（供非 QML 模块复用，如 MirrorController）
     static QString locateAdb();
 
+    /// 若设备息屏则唤醒（设备端自检自唤醒，一条 shell 搞定；异步不阻塞）
+    static void ensureAwake(const QString &serial);
+
 signals:
     void readyChanged();
     void busyChanged();

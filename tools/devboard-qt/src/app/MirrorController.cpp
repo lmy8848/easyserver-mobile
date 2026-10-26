@@ -3,6 +3,8 @@
 #include <QCoreApplication>
 
 #include "../core/AdbClient.h"
+#include <QDateTime>
+
 #include "../core/ControlMsg.h"
 #include <QDir>
 
@@ -18,11 +20,36 @@ MirrorController::MirrorController(QObject *parent) : QObject(parent) {
         if (!dir.cdUp()) break;
     }
     m_provider = new MirrorImageProvider();
+    // 保持亮屏：独立于视频流的定时唤醒（息屏时镜像只会得到黑帧）
+    m_wakeTimer = new QTimer(this);
+    m_wakeTimer->setInterval(3000);
+    connect(m_wakeTimer, &QTimer::timeout, this, [this]() {
+        if (m_stopping || m_serial.isEmpty()) return;
+        AdbClient::ensureAwake(m_serial);
+    });
+    m_wakeTimer->start();
+}
+
+void MirrorController::setAdbClient(QObject *adb) {
+    m_adb = adb;
+    // adb 串口选出后自动连接镜像
+    connect(m_adb, SIGNAL(currentSerialChanged()), this,
+            SLOT(onAdbSerialChanged()), Qt::QueuedConnection);
+}
+
+void MirrorController::onAdbSerialChanged() {
+    if (!m_autoConnect || m_running) return;
+    const QString serial = m_adb->property("currentSerial").toString();
+    if (serial.isEmpty()) return;
+    qDebug() << "[mirror] auto-connect to" << serial;
+    connectTo(serial);
 }
 
 void MirrorController::connectTo(const QString &serial) {
+    qDebug() << "[connect] begin serial=" << serial;
     if (m_running || serial.isEmpty()) return;
     m_serial = serial;
+    qDebug() << "[connect] server create, jar=" << m_jarPath;
 
     m_server = new ScrcpyServer(this);
     m_server->setAdbPath(m_adbPath.isEmpty() ? AdbClient::locateAdb()
@@ -30,13 +57,16 @@ void MirrorController::connectTo(const QString &serial) {
     m_server->setJarPath(m_jarPath);
     QString err;
     const int port = 27183; // 冲突时 forward 覆盖；见 PLAN 补充建议 1
+    qDebug() << "[connect] server.start...";
     if (!m_server->start(serial, port, &err)) {
+        qDebug() << "[connect] server failed:" << err;
         m_status = err.isEmpty() ? QStringLiteral("server 启动失败") : err;
         emit statusChanged(m_status);
         m_server->deleteLater();
         m_server = nullptr;
         return;
     }
+    qDebug() << "[connect] server ok, creating worker...";
     m_running = true;
     emit runningChanged(true);
     m_status = QStringLiteral("连接 video/control socket…");
@@ -52,6 +82,9 @@ void MirrorController::connectTo(const QString &serial) {
             &MirrorController::onWorkerStatus, Qt::QueuedConnection);
     connect(m_worker, &StreamWorker::failed, this,
             &MirrorController::onWorkerFailed, Qt::QueuedConnection);
+    connect(m_worker, &StreamWorker::bytesReceived, this,
+            [this](qint64 delta) { m_statBytes += delta; },
+            Qt::QueuedConnection);
     connect(m_worker, &StreamWorker::videoSizeChanged, this,
             [this](int w, int h) {
                 m_videoW = w;
@@ -62,6 +95,7 @@ void MirrorController::connectTo(const QString &serial) {
     connect(this, &MirrorController::controlMessage, m_worker,
             &StreamWorker::sendControl, Qt::QueuedConnection);
     m_ioThread->start();
+    qDebug() << "[connect] io thread started, invoking run...";
     // 阻塞读循环在 IO 线程运行
     QMetaObject::invokeMethod(m_worker, "run", Qt::QueuedConnection,
                               Q_ARG(QString, serial), Q_ARG(int, port));
@@ -85,7 +119,20 @@ void MirrorController::disconnect() {
 void MirrorController::onFrameReady(const QImage &img) {
     m_provider->setLast(img);
     ++m_frameSeq;
-    emit frameSeqChanged();
+
+    // fps / 码率统计（1s 滑动窗口）
+    ++m_statFrames;
+    const QDateTime now = QDateTime::currentDateTime();
+    if (m_statStart.isNull()) m_statStart = now;
+    const qint64 ms = m_statStart.msecsTo(now);
+    if (ms >= 1000) {
+        m_fps = qRound(m_statFrames * 1000.0 / ms);
+        m_bitrateKbps = qRound(m_statBytes * 8.0 / ms);
+        m_statFrames = 0;
+        m_statBytes = 0;
+        m_statStart = now;
+        emit statsChanged();
+    }
 }
 
 void MirrorController::onWorkerStatus(const QString &text) {

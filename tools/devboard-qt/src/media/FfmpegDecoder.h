@@ -94,7 +94,7 @@ private:
             if (m_sws) sws_freeContext(m_sws);
             m_sws = sws_getContext(f->width, f->height, AV_PIX_FMT_YUV420P,
                                    f->width, f->height, AV_PIX_FMT_RGBA,
-                                   SWS_BILINEAR, nullptr, nullptr, nullptr);
+                                   SWS_FAST_BILINEAR, nullptr, nullptr, nullptr);
             m_swsW = f->width;
             m_swsH = f->height;
         }

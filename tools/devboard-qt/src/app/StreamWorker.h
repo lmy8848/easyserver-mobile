@@ -114,6 +114,7 @@ signals:
     void statusChanged(const QString &text);
     void failed(const QString &reason);
     void videoSizeChanged(int width, int height);
+    void bytesReceived(qint64 delta);
 
 public slots:
     void sendControl(const QByteArray &msg) {
