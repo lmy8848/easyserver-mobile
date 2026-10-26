@@ -18,6 +18,8 @@ public:
     bool connectToHost(const QString &host, quint16 port,
                        int timeoutMs = 5000) {
         m_sock->connectToHost(host, port);
+        // TCP_NODELAY：注入消息必须立即出栈，否则 Nagle+延迟ACK 可多吃 40ms
+        m_sock->setSocketOption(QAbstractSocket::LowDelayOption, 1);
         return m_sock->waitForConnected(timeoutMs);
     }
 

@@ -133,8 +133,7 @@ void MirrorController::connectTo(const QString &serial) {
     m_worker->moveToThread(m_ioThread);
     connect(m_ioThread, &QThread::finished, m_worker, &QObject::deleteLater);
     connect(m_worker, &StreamWorker::frameReady, this,
-            &MirrorController::onFrameReady, Qt::QueuedConnection);
-    connect(m_worker, &StreamWorker::statusChanged, this,
+            &MirrorController::onFrameReady, Qt::QueuedConnection);    connect(m_worker, &StreamWorker::statusChanged, this,
             &MirrorController::onWorkerStatus, Qt::QueuedConnection);
     connect(m_worker, &StreamWorker::failed, this,
             &MirrorController::onWorkerFailed, Qt::QueuedConnection);
@@ -177,21 +176,24 @@ void MirrorController::stopAll(const QString &finalStatus) {
     emit statusChanged(m_status);
 }
 
-void MirrorController::onFrameReady(const QImage &img) {
+void MirrorController::onFrameReady(const QImage &img, qint64 latencyMs) {
     m_retries = 0; // 有真帧流入 = 会话健康，重试预算清零
     if (!m_firstFrameLogged) {
         m_firstFrameLogged = true;
         qDebug() << "[mirror] first frame decoded" << img.size();
     }
     m_provider->setLast(img);
-    // UI 节流：帧照常解码（provider 永远持有最新），但 QML 重绘限到 ~25fps，
-    // 且每次请求直接取最新帧——排队中的旧 URL 请求天然作废，延迟不再累积。
+    // UI 节流（40fps 上限，须小于流帧间隔，否则会把显示帧率砍半）：
+    // 帧照常解码（provider 永远持有最新），每次重绘直接取最新帧。
     const QDateTime uiNow = QDateTime::currentDateTime();
-    if (!m_lastUiEmit.isValid() || m_lastUiEmit.msecsTo(uiNow) >= 40) {
+    if (!m_lastUiEmit.isValid() || m_lastUiEmit.msecsTo(uiNow) >= 25) {
         m_lastUiEmit = uiNow;
         ++m_frameSeq;
         emit frameSeqChanged(); // 驱动 QML Image 重新请求 provider（缺失即黑屏）
+    } else {
+        ++m_uiDropped;
     }
+    m_statLatencyMs += int(latencyMs);
 
     // fps / 码率统计（1s 滑动窗口）
     ++m_statFrames;
@@ -201,8 +203,16 @@ void MirrorController::onFrameReady(const QImage &img) {
     if (ms >= 1000) {
         m_fps = qRound(m_statFrames * 1000.0 / ms);
         m_bitrateKbps = qRound(m_statBytes * 8.0 / ms);
+        m_latencyMs = m_statFrames ? m_statLatencyMs / m_statFrames : 0;
+        qDebug() << QString::fromUtf8("[perf] ui fps=%1 kbps=%2 latency=%3ms dropped=%4")
+                        .arg(m_fps)
+                        .arg(m_bitrateKbps)
+                        .arg(m_latencyMs)
+                        .arg(m_uiDropped);
         m_statFrames = 0;
         m_statBytes = 0;
+        m_statLatencyMs = 0;
+        m_uiDropped = 0;
         m_statStart = now;
         emit statsChanged();
     }

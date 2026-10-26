@@ -20,6 +20,7 @@ class MirrorController : public QObject {
     Q_PROPERTY(int videoHeight READ videoHeight NOTIFY videoSizeChanged)
     Q_PROPERTY(int fps READ fps NOTIFY statsChanged)
     Q_PROPERTY(int bitrateKbps READ bitrateKbps NOTIFY statsChanged)
+    Q_PROPERTY(int latencyMs READ latencyMs NOTIFY statsChanged)
 
 public:
     explicit MirrorController(QObject *parent = nullptr);
@@ -46,6 +47,7 @@ public:
     int videoHeight() const { return m_videoH; }
     int fps() const { return m_fps; }
     int bitrateKbps() const { return m_bitrateKbps; }
+    int latencyMs() const { return m_latencyMs; }
 
     int frameSeq() const { return m_frameSeq; }
     QString status() const { return m_status; }
@@ -63,7 +65,7 @@ signals:
     void statsChanged();
 
 private slots:
-    void onFrameReady(const QImage &img);
+    void onFrameReady(const QImage &img, qint64 latencyMs);
     void onAdbSerialChanged();
     void onAdbDevicesChanged();
     void onWorkerStatus(const QString &text);
@@ -92,6 +94,9 @@ private:
     int m_videoH = 0;
     int m_fps = 0;
     int m_bitrateKbps = 0;
+    int m_latencyMs = 0;     // 取流→解码→可上屏 的窗口均值
+    int m_statLatencyMs = 0; // 窗口内累加
+    int m_uiDropped = 0;     // 节流跳过的重绘数
     int m_statFrames = 0;
     QDateTime m_lastUiEmit; // QML 重绘节流（~25fps）
     bool m_firstFrameLogged = false;

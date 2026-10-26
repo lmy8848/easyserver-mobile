@@ -378,8 +378,9 @@ ApplicationWindow {
                     return qsTr("adb 未就绪：请设置 DEVBOARD_ADB")
                 if (Tools.actionBusy) return Tools.actionStatus
                 if (Mirror.running)
-                    return qsTr("● H.264 %1fps · %2 kbps · %3x%4")
+                    return qsTr("● H.264 %1fps · %2 kbps · 链路 %3ms · %4x%5")
                         .arg(Mirror.fps).arg(Mirror.bitrateKbps)
+                        .arg(Mirror.latencyMs)
                         .arg(Mirror.videoWidth).arg(Mirror.videoHeight)
                 return qsTr("就绪 · 在线设备 %1 台 · 当前 %2")
                         .arg(Adb.devices.length).arg(Adb.currentSerial || "-")

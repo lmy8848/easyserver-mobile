@@ -20,6 +20,7 @@ public:
     bool connectToHost(const QString &host, quint16 port,
                        int timeoutMs = 5000) {
         m_sock->connectToHost(host, port);
+        m_sock->setSocketOption(QAbstractSocket::LowDelayOption, 1);
         return m_sock->waitForConnected(timeoutMs);
     }
 

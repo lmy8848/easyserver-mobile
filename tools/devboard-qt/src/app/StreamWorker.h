@@ -86,8 +86,21 @@ public slots:
         bool decoderOpen = false;
         m_stop = false;
 
+        // 性能测量：定位 fps 瓶颈（网络等待 / 解码 / 转换）
+        QElapsedTimer frameClock;      // 帧头首字节 → 解码完成
+        QElapsedTimer perfWindow;      // 3s 汇总窗口
+        perfWindow.start();
+        int perfFrames = 0;
+        qint64 perfBytes = 0;
+        qint64 perfWaitMs = 0;  // readExact 阻塞等数据的耗时（网络/编码器侧）
+        qint64 perfDecodeMs = 0; // 解码+格式转换耗时
+        qint64 perfPtsDeltaMs = 0; // 相邻帧 pts 间隔（编码器输出节奏）
+        quint64 lastPtsUs = 0;
+        perfWindow.start();
+
         while (!m_stop) {
             char header[12] = {0};
+            frameClock.start();
             if (!video.readExact(header, 12)) break;
             const quint64 ptsFlags = qFromBigEndian<quint64>(
                 reinterpret_cast<const uchar *>(header));
@@ -99,6 +112,7 @@ public slots:
             }
             QByteArray payload(size, 0);
             if (!video.readExact(payload.data(), size)) break;
+            const qint64 waitMs = frameClock.elapsed();
 
             const bool isConfig = (ptsFlags >> 63) & 1;
             if (isConfig) {
@@ -114,12 +128,37 @@ public slots:
                 continue; // CONFIG 不是画面帧
             }
             if (!decoderOpen) continue; // 等到 CONFIG 再开解码器
+            const quint64 ptsUs = ptsFlags & ((quint64(1) << 62) - 1);
+            if (lastPtsUs && ptsUs > lastPtsUs)
+                perfPtsDeltaMs += qint64((ptsUs - lastPtsUs) / 1000);
+            lastPtsUs = ptsUs;
             if (decoder.feed(payload)) {
                 const QImage img = decoder.takeFrame();
+                const qint64 latencyMs = frameClock.elapsed(); // 取流→解码完成
+                perfFrames++;
+                perfBytes += qint64(size) + 12;
+                perfWaitMs += waitMs;
+                perfDecodeMs += latencyMs - waitMs;
                 if (!img.isNull()) {
+                    emit bytesReceived(qint64(size) + 12);
                     // 主线程渲染：由 MirrorController 转为信号排队
-                    emit frameReady(img);
+                    emit frameReady(img, latencyMs);
                 }
+            }
+            if (perfWindow.elapsed() >= 3000) {
+                qDebug() << QString::fromUtf8(
+                                "[perf] stream fps=%1 kbps=%2 wait=%3ms decode=%4ms ptsΔ=%5ms")
+                                .arg(perfFrames * 1000.0 / perfWindow.elapsed(), 0, 'f', 1)
+                                .arg(perfBytes * 8 / perfWindow.elapsed())
+                                .arg(perfFrames ? perfWaitMs / perfFrames : 0)
+                                .arg(perfFrames ? perfDecodeMs / perfFrames : 0)
+                                .arg(perfFrames ? perfPtsDeltaMs / perfFrames : 0);
+                perfFrames = 0;
+                perfBytes = 0;
+                perfWaitMs = 0;
+                perfDecodeMs = 0;
+                perfPtsDeltaMs = 0;
+                perfWindow.restart();
             }
         }
         emit statusChanged(QStringLiteral("视频流已结束"));
@@ -130,7 +169,7 @@ public slots:
     void requestStop() { m_stop = true; }
 
 signals:
-    void frameReady(const QImage &image);
+    void frameReady(const QImage &image, qint64 latencyMs);
     void statusChanged(const QString &text);
     void failed(const QString &reason);
     void videoSizeChanged(int width, int height);

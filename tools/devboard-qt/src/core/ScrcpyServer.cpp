@@ -77,7 +77,7 @@ bool ScrcpyServer::start(const QString &serial, int port, QString *error) {
         QStringLiteral("shell"),
         QStringLiteral("CLASSPATH=%1 app_process / com.genymobile.scrcpy.Server "
                        "%2 log_level=info audio=false video=true max_size=0 "
-                       "max_fps=30 video_bit_rate=8000000 "
+                       "max_fps=60 video_bit_rate=8000000 "
                        "video_codec_options=low-latency=1,i-frame-interval=2 "
                        "stay_awake=true tunnel_forward=true "
                        "send_device_meta=true send_frame_meta=true "
