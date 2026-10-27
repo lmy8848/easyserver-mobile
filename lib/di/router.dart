@@ -8,6 +8,7 @@ import '../presentation/screens/notifications/notifications_screen.dart';
 import '../presentation/screens/profile/profile_screen.dart';
 import '../presentation/screens/logs/logs_screen.dart';
 import '../presentation/screens/lanshare/lanshare_screen.dart';
+import '../presentation/screens/cron/cron_screen.dart';
 import '../presentation/screens/dashboard/home_screen.dart';
 
 final GlobalKey<NavigatorState> _rootNavigatorKey =
@@ -30,6 +31,7 @@ final appRouter = GoRouter(
     GoRoute(path: '/logs', builder: (context, state) => const LogsScreen()),
     GoRoute(
         path: '/lanshare', builder: (context, state) => const LanShareScreen()),
+    GoRoute(path: '/cron', builder: (context, state) => const CronScreen()),
     GoRoute(
       path: '/',
       builder: (context, state) => const HomeScreen(),

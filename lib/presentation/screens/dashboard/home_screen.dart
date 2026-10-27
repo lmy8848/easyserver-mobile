@@ -206,21 +206,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 ],
               ),
             ),
-            _drawerItem(Icons.monitor_heart, '服务器概览', () {
+            // 索引必须与 body 的 IndexedStack 顺序一致：
+            // 0 仪表盘 / 1 容器 / 2 服务 / 3 终端 / 4 文件
+            _drawerItem(Icons.monitor_heart, '服务器概览', () => _selectTab(0)),
+            _drawerItem(Icons.view_in_ar_outlined, '容器管理', () => _selectTab(1)),
+            _drawerItem(
+                Icons.miscellaneous_services, '服务管理', () => _selectTab(2)),
+            _drawerItem(Icons.terminal, '终端', () => _selectTab(3)),
+            _drawerItem(Icons.folder, '文件管理', () => _selectTab(4)),
+            _drawerItem(Icons.schedule, '计划任务', () {
               Navigator.pop(context);
-              setState(() => _currentIndex = 0);
-            }),
-            _drawerItem(Icons.miscellaneous_services, '服务管理', () {
-              Navigator.pop(context);
-              setState(() => _currentIndex = 1);
-            }),
-            _drawerItem(Icons.terminal, '终端', () {
-              Navigator.pop(context);
-              setState(() => _currentIndex = 2);
-            }),
-            _drawerItem(Icons.folder, '文件管理', () {
-              Navigator.pop(context);
-              setState(() => _currentIndex = 3);
+              context.push('/cron');
             }),
             _drawerItem(Icons.lan_outlined, '局域网传文件', () {
               Navigator.pop(context);
@@ -266,6 +262,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ),
       ),
     );
+  }
+
+  // 抽屉与底部导航共用：切换 tab 时同步 homeTabProvider，
+  // 各 tab 依赖它判断自己是否可见（懒加载/停止轮询）。
+  void _selectTab(int index) {
+    Navigator.pop(context);
+    setState(() => _currentIndex = index);
+    ref.read(homeTabProvider.notifier).state = index;
   }
 
   Widget _drawerItem(IconData icon, String title, VoidCallback onTap) {
