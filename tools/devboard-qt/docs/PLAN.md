@@ -4,6 +4,13 @@
 > 目标产物：`tools/devboard-qt/`（新），`tools/devboard/`（Flutter 版冻结保留）
 > UI 规范：见 [UI.md](UI.md)（布局/交互/快捷键/状态机，实现以其为准）
 
+> **实现现状（2026-10-27）**：架构在方案 B 的基础上做了一次调整——Qt Quick 场景图在本机渲染完全失效（渲染循环启动、QRhi 创建成功，但从不绘制；最小 QML 应用同样冻结；Qt Widgets 正常），自研协议客户端链路无法出画。已改为 **Qt Widgets 宿主 + scrcpy.exe 官方客户端子窗口嵌入**：
+>
+> - 视频与输入全部交给 `scrcpy.exe`（SDL 渲染、control socket、多点触控、快捷键），壳层用 `SetParent` 把它的窗口嵌进 `QWidget`；
+> - 壳层职责：设备发现（adb）、进程生命周期、窗口嵌入与重排、键盘/滚轮转发（`eventFilter`）、右侧四面板、配对向导、自动重连；
+> - 已真机验证：嵌入出画、点击/滑动/键盘注入、logcat 流式（120ms 批量 + 背压）、截图/录屏/APK/包列表、异常退出 3 秒自动重连、无线配对向导；
+> - 下文第 3 节的协议客户端设计保留为原始方案记录，实际实现见 ADR-005。
+
 ---
 
 ## 1. 背景与目标
@@ -59,6 +66,8 @@
 ## 3. 目标架构
 
 ### 3.1 运行时拓扑
+
+> 注：本节是自研协议客户端的原始设计。实际实现改为嵌入式 scrcpy.exe，拓扑为「壳进程 + scrcpy.exe 子进程 + scrcpy-server（设备端）」。
 
 ```
 ┌──────────────────────────── DevBoard.exe (Qt) ────────────────────────────┐
@@ -193,7 +202,21 @@ tools/devboard-qt/
 
 ---
 
+### ADR-005（2026-10-27）：渲染改为 Widgets + 嵌入 scrcpy.exe
+
+**背景**：按方案 B 实现的自研客户端（ScrcpyServer + StreamWorker + FfmpegDecoder + QML 显示）在真机上跑通了握手与解码，但暴露三个问题：① Qt Quick 场景图在本机完全不出画（D3D11 / OpenGL / software 后端 × threaded / basic / windows 渲染循环全部冻结，最小 QML 应用同样冻结，而 Qt Widgets 渲染正常）；② FFmpeg `sws_scale` 同尺寸转换偶发 `0xc0000374` 堆损坏；③ 自研链路要自己维护协议解析、握手重试、帧节流、坐标映射，工程量与风险远高于收益。
+
+**决策**：主窗口用 Qt Widgets；`QProcess` 启动官方 `scrcpy.exe`，按 pid + 窗口标题定位其 HWND，去掉边框样式后 `SetParent` 进宿主 `QWidget`。键盘与滚轮在应用级 `eventFilter` 里转发为 `WM_KEYDOWN/WM_KEYUP/WM_MOUSEWHEEL`，鼠标点击/滑动由嵌入窗口自己接收。
+
+**理由**：渲染、编码参数、输入映射、无线连接都交给成熟客户端；`scrcpy.exe` 与 server jar 已随仓库放在 `third_party/scrcpy-win64/`，不引入新依赖；Widgets 渲染在本机已验证可用。
+
+**约束**：启动时 `--window-width/--window-height` 直接取宿主尺寸，嵌入后不再改变子窗口尺寸（SDL 收到 resize 会重建交换链，导致重影或黑屏），宿主缩放时只重排子窗口位置。窗口先以 `--window-x/y=-32000` 创建在屏幕外，嵌入时再移入宿主，避免独立窗口闪现。
+
+**延后项**：若要单进程分发或彻底摆脱外部 exe，可回到"scrcpy 源码级集成 + YUV 直传纹理"，前提是解决本机 Qt Quick 渲染问题或改用 Widgets 的 OpenGL 纹理绘制。
+
 ## 6. 分阶段实施计划
+
+> 执行情况：M0-M4 的能力均已具备，但实现形态不同（见 ADR-005）——协议/渲染/输入由 scrcpy.exe 承担，壳层做设备、窗口与面板。M5（打包分发）未做。
 
 > 每阶段结束必须**可运行、可验收**，不允许"半成品合并"。
 
