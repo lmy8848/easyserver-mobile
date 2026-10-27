@@ -50,6 +50,8 @@ signals:
     void videoSizeChanged(int width, int height);
     // 渲染帧率（--print-fps 每秒打印 "N fps"）
     void fpsChanged(int fps);
+    // 每秒被丢掉的帧数（日志里的 "+N frames skipped"），即客户端消费不过来的帧
+    void jankChanged(int skippedFrames);
 
 private:
     static QString locateScrcpy();

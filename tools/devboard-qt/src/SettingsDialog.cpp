@@ -44,16 +44,22 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
     m_maxFps->addItem(QStringLiteral("不限"), 0);
     m_maxFps->addItem(QStringLiteral("30"), 30);
     m_maxFps->addItem(QStringLiteral("60（推荐）"), 60);
-    m_maxFps->addItem(QStringLiteral("90"), 90);
+    m_maxFps->addItem(QStringLiteral("90（多数设备编码器跟不上，反而掉帧）"), 90);
     m_bitRate = new QSpinBox(mirrorBox);
     m_bitRate->setRange(0, 50);
     m_bitRate->setSuffix(QStringLiteral(" Mbps"));
     m_bitRate->setSpecialValueText(QStringLiteral("默认"));
+    m_displayBuffer = new QComboBox(mirrorBox);
+    m_displayBuffer->addItem(QStringLiteral("关（最低延迟）"), 0);
+    m_displayBuffer->addItem(QStringLiteral("30 ms"), 30);
+    m_displayBuffer->addItem(QStringLiteral("60 ms（无线抖动大时更顺滑）"), 60);
+    m_displayBuffer->addItem(QStringLiteral("100 ms"), 100);
     m_stayAwake = new QCheckBox(QStringLiteral("连接期间保持设备唤醒"), mirrorBox);
     m_turnScreenOff = new QCheckBox(QStringLiteral("连接后关闭手机屏幕（视频仍继续传输）"), mirrorBox);
     mirrorForm->addRow(QStringLiteral("分辨率上限"), m_maxSize);
     mirrorForm->addRow(QStringLiteral("帧率上限"), m_maxFps);
     mirrorForm->addRow(QStringLiteral("码率"), m_bitRate);
+    mirrorForm->addRow(QStringLiteral("视频缓冲"), m_displayBuffer);
     mirrorForm->addRow(QString(), m_stayAwake);
     mirrorForm->addRow(QString(), m_turnScreenOff);
     lay->addWidget(mirrorBox);
@@ -154,6 +160,8 @@ void SettingsDialog::loadValues() {
     const int fpsIdx = m_maxFps->findData(m.maxFps);
     m_maxFps->setCurrentIndex(fpsIdx >= 0 ? fpsIdx : 2);
     m_bitRate->setValue(m.bitRateMbps);
+    const int bufIdx = m_displayBuffer->findData(m.displayBufferMs);
+    m_displayBuffer->setCurrentIndex(bufIdx >= 0 ? bufIdx : 0);
     m_stayAwake->setChecked(m.stayAwake);
     m_turnScreenOff->setChecked(m.turnScreenOff);
 
@@ -178,6 +186,7 @@ void SettingsDialog::saveValues() {
     m.maxSize = m_maxSize->currentData().toInt();
     m.maxFps = m_maxFps->currentData().toInt();
     m.bitRateMbps = m_bitRate->value();
+    m.displayBufferMs = m_displayBuffer->currentData().toInt();
     m.stayAwake = m_stayAwake->isChecked();
     m.turnScreenOff = m_turnScreenOff->isChecked();
     s.setMirror(m);
@@ -203,6 +212,7 @@ void SettingsDialog::applyDefaultsToUi() {
     m_maxSize->setCurrentIndex(sizeIdx);
     m_maxFps->setCurrentIndex(m_maxFps->findData(60));
     m_bitRate->setValue(8);
+    m_displayBuffer->setCurrentIndex(0);
     m_stayAwake->setChecked(true);
     m_turnScreenOff->setChecked(false);
     m_autoConnectLast->setChecked(true);

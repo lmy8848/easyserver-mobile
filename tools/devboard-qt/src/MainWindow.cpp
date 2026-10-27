@@ -71,6 +71,8 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
             m_stats->clear();
             m_videoW = m_videoH = 0;
             m_renderFps = -1;
+            m_fpsSamples.clear();
+            m_jankSamples.clear();
             updateStatsLabel();
         }
     });
@@ -82,6 +84,15 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     });
     connect(m_scrcpy, &ScrcpyProcess::fpsChanged, this, [this](int fps) {
         m_renderFps = fps;
+        m_fpsSamples.append(fps);
+        while (m_fpsSamples.size() > 5)
+            m_fpsSamples.removeFirst();
+        updateStatsLabel();
+    });
+    connect(m_scrcpy, &ScrcpyProcess::jankChanged, this, [this](int skipped) {
+        m_jankSamples.append(skipped);
+        while (m_jankSamples.size() > 5)
+            m_jankSamples.removeFirst();
         updateStatsLabel();
     });
     connect(m_stats, &MirrorStats::changed, this, &MainWindow::updateStatsLabel);
@@ -319,7 +330,9 @@ void MainWindow::buildUi() {
     m_statsLabel->setObjectName(QStringLiteral("mirrorStats"));
     m_statsLabel->setStyleSheet(QStringLiteral("color:#8fa3bf; padding-right:8px;"));
     m_statsLabel->setToolTip(QStringLiteral(
-        "分辨率/帧率：scrcpy 客户端日志\n"
+        "分辨率：scrcpy 客户端日志里实际解码的视频尺寸\n"
+        "帧率：最近 5 秒渲染帧率的平均值（静态画面时编码器不出帧，单秒值会跳）\n"
+        "掉帧/s：scrcpy 每秒丢弃的帧（新帧覆盖了还没显示的旧帧），越小越顺\n"
         "码率：设备端 scrcpy 进程实际写入 socket 的字节数（静止画面接近 0 属正常）\n"
         "RTT：设备 ping 电脑的往返时间，反映无线链路，不等于画面延迟\n"
         "累计：本次连接以来 scrcpy 进程写出的总字节数"));
@@ -609,8 +622,20 @@ void MainWindow::updateStatsLabel() {
     QStringList parts;
     if (m_videoW > 0)
         parts << QStringLiteral("%1x%2").arg(m_videoW).arg(m_videoH);
-    if (m_renderFps >= 0)
-        parts << QStringLiteral("%1 fps").arg(m_renderFps);
+    if (m_renderFps >= 0) {
+        // 静态画面时编码器按 VFR 不出帧，单秒值会在 0 与 60 之间跳，看 5 秒平均更直观
+        int sum = 0;
+        for (int v : m_fpsSamples)
+            sum += v;
+        const int avg = m_fpsSamples.isEmpty() ? m_renderFps : qRound(double(sum) / m_fpsSamples.size());
+        parts << QStringLiteral("%1 fps").arg(avg);
+    }
+    if (!m_jankSamples.isEmpty()) {
+        int skipped = 0;
+        for (int v : m_jankSamples)
+            skipped += v;
+        parts << QStringLiteral("掉帧 %1/s").arg(skipped / double(m_jankSamples.size()), 0, 'f', 1);
+    }
     if (m_stats->valid())
         parts << QStringLiteral("%1 Mbps").arg(m_stats->kbps() / 1000.0, 0, 'f', 2);
     if (m_stats->rttMs() >= 0)

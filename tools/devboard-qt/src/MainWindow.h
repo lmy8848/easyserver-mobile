@@ -89,6 +89,9 @@ private:
     int m_videoW = 0;
     int m_videoH = 0;
     int m_renderFps = -1;
+    // 最近 5 秒的采样：单秒跳数在静态画面/场景切换时抖动很大，看滚动平均才有意义
+    QList<int> m_fpsSamples;
+    QList<int> m_jankSamples;
 
     QList<AdbClient::Device> m_devices;
     QTimer *m_autoReconnect = nullptr;

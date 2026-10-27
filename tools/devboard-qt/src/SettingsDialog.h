@@ -25,6 +25,7 @@ private:
     QComboBox *m_maxSize = nullptr;
     QComboBox *m_maxFps = nullptr;
     QSpinBox *m_bitRate = nullptr;
+    QComboBox *m_displayBuffer = nullptr;
     QCheckBox *m_stayAwake = nullptr;
     QCheckBox *m_turnScreenOff = nullptr;
 

@@ -25,6 +25,7 @@ MirrorOptions Settings::mirror() const {
     o.maxSize = m_s->value(QStringLiteral("mirror/maxSize"), 720).toInt();
     o.maxFps = m_s->value(QStringLiteral("mirror/maxFps"), 60).toInt();
     o.bitRateMbps = m_s->value(QStringLiteral("mirror/bitRateMbps"), 8).toInt();
+    o.displayBufferMs = m_s->value(QStringLiteral("mirror/displayBufferMs"), 0).toInt();
     o.stayAwake = m_s->value(QStringLiteral("mirror/stayAwake"), true).toBool();
     o.turnScreenOff = m_s->value(QStringLiteral("mirror/turnScreenOff"), false).toBool();
     return o;
@@ -67,6 +68,7 @@ void Settings::setMirror(const MirrorOptions &o) {
     m_s->setValue(QStringLiteral("mirror/maxSize"), o.maxSize);
     m_s->setValue(QStringLiteral("mirror/maxFps"), o.maxFps);
     m_s->setValue(QStringLiteral("mirror/bitRateMbps"), o.bitRateMbps);
+    m_s->setValue(QStringLiteral("mirror/displayBufferMs"), o.displayBufferMs);
     m_s->setValue(QStringLiteral("mirror/stayAwake"), o.stayAwake);
     m_s->setValue(QStringLiteral("mirror/turnScreenOff"), o.turnScreenOff);
 }

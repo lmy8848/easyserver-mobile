@@ -10,6 +10,7 @@ struct MirrorOptions {
     int maxSize = 720;           // 长边像素上限，0 = 原始分辨率
     int maxFps = 60;             // 0 = 不限帧率
     int bitRateMbps = 8;         // 0 = 用 scrcpy 默认码率
+    int displayBufferMs = 0;     // 抖动缓冲：吸收网络抖动换顺滑，代价是同等延迟
     bool stayAwake = true;       // 连接期间保持设备唤醒
     bool turnScreenOff = false;  // 连接后立即关闭手机屏幕（视频仍继续传输）
 };

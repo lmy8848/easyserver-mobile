@@ -94,6 +94,9 @@ void ScrcpyProcess::start(const QString &serial) {
         args << QStringLiteral("--max-fps=%1").arg(opt.maxFps);
     if (opt.bitRateMbps > 0)
         args << QStringLiteral("--video-bit-rate=%1M").arg(opt.bitRateMbps);
+    // 抖动缓冲：无线链路突发时把到达间隔抹平，帧率更稳（代价是同样的显示延迟）
+    if (opt.displayBufferMs > 0)
+        args << QStringLiteral("--display-buffer=%1").arg(opt.displayBufferMs);
     if (opt.stayAwake)
         args << QStringLiteral("--stay-awake");
     if (opt.turnScreenOff)
@@ -140,7 +143,8 @@ void ScrcpyProcess::start(const QString &serial) {
 
     qInfo() << "[scrcpy] starting:" << m_exePath << args.join(QLatin1Char(' '));
     qInfo() << "[scrcpy] mirror options:" << "maxSize=" << opt.maxSize << "maxFps=" << opt.maxFps
-            << "bitRate=" << opt.bitRateMbps << "stayAwake=" << opt.stayAwake
+            << "bitRate=" << opt.bitRateMbps << "displayBuffer=" << opt.displayBufferMs
+            << "stayAwake=" << opt.stayAwake
             << "turnScreenOff=" << opt.turnScreenOff;
     m_proc->start(m_exePath, args);
 
@@ -162,6 +166,7 @@ void ScrcpyProcess::consumeLog(QByteArray &buf, const QByteArray &chunk) {
 
     static const QRegularExpression sizeRe(QStringLiteral("Texture: (\\d+)x(\\d+)"));
     static const QRegularExpression fpsRe(QStringLiteral("(\\d+) fps"));
+    static const QRegularExpression skipRe(QStringLiteral("\\+(\\d+) frames skipped"));
 
     int idx;
     while ((idx = buf.indexOf('\n')) >= 0) {
@@ -190,6 +195,9 @@ void ScrcpyProcess::consumeLog(QByteArray &buf, const QByteArray &chunk) {
         const auto fp = fpsRe.match(line);
         if (fp.hasMatch())
             emit fpsChanged(fp.captured(1).toInt());
+        // "N fps (+M frames skipped)" 里的 M：到达的帧被后一帧覆盖掉的量，即真实卡顿
+        const auto sk = skipRe.match(line);
+        emit jankChanged(sk.hasMatch() ? sk.captured(1).toInt() : 0);
     }
     // 防御脏数据把缓冲撑爆（正常不会有这么长的行）
     if (buf.size() > 64 * 1024)
