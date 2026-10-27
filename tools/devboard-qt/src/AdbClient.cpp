@@ -58,8 +58,8 @@ void AdbClient::refreshDevices() {
     env.insert(QStringLiteral("MSYS_NO_PATHCONV"), QStringLiteral("1"));
     proc->setProcessEnvironment(env);
     connect(proc, &QProcess::finished, this, [this, proc](int code, QProcess::ExitStatus) {
-        const QString out = QString::fromLocal8Bit(proc->readAllStandardOutput());
-        const QString err = QString::fromLocal8Bit(proc->readAllStandardError());
+        const QString out = QString::fromUtf8(proc->readAllStandardOutput());
+        const QString err = QString::fromUtf8(proc->readAllStandardError());
         m_refreshInFlight = false;
         if (code != 0 && !err.trimmed().isEmpty())
             emit errorOccurred(err.trimmed());
@@ -106,8 +106,9 @@ void AdbClient::shell(const QString &serial, const QString &command) {
     env.insert(QStringLiteral("MSYS_NO_PATHCONV"), QStringLiteral("1"));
     proc->setProcessEnvironment(env);
     connect(proc, &QProcess::finished, this, [this, proc](int, QProcess::ExitStatus) {
-        const QString out = QString::fromLocal8Bit(proc->readAllStandardOutput());
-        const QString err = QString::fromLocal8Bit(proc->readAllStandardError());
+        // adb 的输出是 UTF-8；Windows 本地编码是 GBK，用 fromLocal8Bit 会把中文打乱
+        const QString out = QString::fromUtf8(proc->readAllStandardOutput());
+        const QString err = QString::fromUtf8(proc->readAllStandardError());
         if (!out.isEmpty())
             emit commandOutput(out);
         if (!err.isEmpty())

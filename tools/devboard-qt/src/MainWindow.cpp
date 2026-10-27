@@ -14,6 +14,7 @@
 #include <QShortcut>
 #include <QSplitter>
 #include <QStatusBar>
+#include <QHash>
 #include <QInputDialog>
 #include <QTimer>
 #include <QToolBar>
@@ -247,8 +248,8 @@ void MainWindow::buildUi() {
         p.start(m_adb->adbPath(), {QStringLiteral("-s"), serial, QStringLiteral("install"),
                                    QStringLiteral("-r"), path});
         p.waitForFinished(60000);
-        m_panels->appendShell(QString::fromLocal8Bit(p.readAllStandardOutput()));
-        m_panels->appendShell(QString::fromLocal8Bit(p.readAllStandardError()));
+        m_panels->appendShell(QString::fromUtf8(p.readAllStandardOutput()));
+        m_panels->appendShell(QString::fromUtf8(p.readAllStandardError()));
     });
     connect(m_panels, &Panels::logcatStartRequested, this, &MainWindow::onLogcatStart);
     connect(m_panels, &Panels::logcatStopRequested, this, &MainWindow::onLogcatStop);
@@ -380,25 +381,90 @@ void MainWindow::onShellCommand(const QString &cmd) {
 void MainWindow::onRefreshInfo() {
     const QString serial = currentSerial();
     if (serial.isEmpty()) {
-        m_panels->appendShell(QStringLiteral("[错误] 未选择设备"));
+        m_status->setText(QStringLiteral("未选择设备"));
         return;
     }
     m_panels->setInfo(QStringLiteral("读取设备信息…"));
+
+    // 标签一律用 ASCII：设备端 shell 的 locale 不保证是 UTF-8，中文只在本地拼接显示。
+    // 输出用 fromUtf8 解码（adb 的 stdout 就是 UTF-8，原来的 fromLocal8Bit 在 GBK 系统会乱码）。
     const QString cmd = QStringLiteral(
-        "echo 品牌: $(getprop ro.product.brand); "
-        "echo 型号: $(getprop ro.product.model); "
-        "echo Android: $(getprop ro.build.version.release) (SDK $(getprop ro.build.version.sdk)); "
-        "echo ABI: $(getprop ro.product.cpu.abi); "
-        "echo 分辨率: $(wm size | tr -d '\\r'); "
-        "echo 密度: $(wm density | tr -d '\\r'); "
-        "echo 电量: $(dumpsys battery | grep -E 'level|status' | tr -d '\\r')");
-    QProcess p;
-    p.start(m_adb->adbPath(), {QStringLiteral("-s"), serial, QStringLiteral("shell"), cmd});
-    if (p.waitForFinished(15000)) {
-        m_panels->setInfo(QString::fromLocal8Bit(p.readAllStandardOutput()));
-    } else {
-        m_panels->setInfo(QStringLiteral("读取超时"));
-    }
+        "echo brand=$(getprop ro.product.brand); "
+        "echo model=$(getprop ro.product.model); "
+        "echo device=$(getprop ro.product.device); "
+        "echo release=$(getprop ro.build.version.release); "
+        "echo sdk=$(getprop ro.build.version.sdk); "
+        "echo abi=$(getprop ro.product.cpu.abi); "
+        "echo serialno=$(getprop ro.serialno); "
+        "echo size=$(wm size | tail -1); "
+        "echo density=$(wm density | tail -1); "
+        "echo level=$(dumpsys battery | awk -F: '/level/{print $2; exit}'); "
+        "echo status=$(dumpsys battery | awk -F: '/status/{print $2; exit}'); "
+        "echo uptime=$(uptime)");
+
+    auto *proc = new QProcess(this);
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    env.insert(QStringLiteral("MSYS_NO_PATHCONV"), QStringLiteral("1"));
+    proc->setProcessEnvironment(env);
+    connect(proc, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
+            [this, proc](int rc, QProcess::ExitStatus) {
+                const QString raw = QString::fromUtf8(proc->readAllStandardOutput());
+                if (rc != 0) {
+                    m_panels->setInfo(QStringLiteral("读取失败（rc=%1）\n%2").arg(rc).arg(raw));
+                    m_status->setText(QStringLiteral("设备信息读取失败"));
+                    proc->deleteLater();
+                    return;
+                }
+                QHash<QString, QString> kv;
+                for (const QString &line : raw.split(QLatin1Char('\n'))) {
+                    const int eq = line.indexOf(QLatin1Char('='));
+                    if (eq <= 0)
+                        continue;
+                    kv.insert(line.left(eq).trimmed(), line.mid(eq + 1).trimmed());
+                }
+
+                const QString status = kv.value(QStringLiteral("status"));
+                QString batteryState;
+                if (status == QStringLiteral("2"))
+                    batteryState = QStringLiteral("充电中");
+                else if (status == QStringLiteral("3"))
+                    batteryState = QStringLiteral("放电中");
+                else if (!status.isEmpty())
+                    batteryState = QStringLiteral("状态 %1").arg(status);
+
+                const QString level = kv.value(QStringLiteral("level"));
+                const QString battery =
+                    batteryState.isEmpty() ? level + QStringLiteral("%")
+                                           : level + QStringLiteral("% · ") + batteryState;
+
+                QStringList rows{
+                    QStringLiteral("品牌        %1").arg(kv.value(QStringLiteral("brand"))),
+                    QStringLiteral("型号        %1").arg(kv.value(QStringLiteral("model"))),
+                    QStringLiteral("设备代号    %1").arg(kv.value(QStringLiteral("device"))),
+                    QStringLiteral("系统        Android %1 (SDK %2)")
+                        .arg(kv.value(QStringLiteral("release")), kv.value(QStringLiteral("sdk"))),
+                    QStringLiteral("ABI         %1").arg(kv.value(QStringLiteral("abi"))),
+                    QStringLiteral("分辨率      %1").arg(kv.value(QStringLiteral("size"))),
+                    QStringLiteral("密度        %1").arg(kv.value(QStringLiteral("density"))),
+                    QStringLiteral("电量        %1").arg(battery),
+                    QStringLiteral("序列号      %1").arg(kv.value(QStringLiteral("serialno"))),
+                    QStringLiteral("运行时长    %1").arg(kv.value(QStringLiteral("uptime"))),
+                    QStringLiteral("连接        %1").arg(currentSerial()),
+                };
+                m_panels->setInfo(rows.join(QLatin1Char('\n')));
+                m_status->setText(QStringLiteral("设备信息已刷新：%1 %2 · 电量 %3")
+                                      .arg(kv.value(QStringLiteral("brand")),
+                                           kv.value(QStringLiteral("model")), battery));
+                proc->deleteLater();
+            });
+    connect(proc, &QProcess::errorOccurred, this, [this, proc](QProcess::ProcessError e) {
+        if (e == QProcess::FailedToStart) {
+            m_panels->setInfo(QStringLiteral("adb 启动失败：%1").arg(m_adb->adbPath()));
+            m_status->setText(QStringLiteral("设备信息读取失败"));
+        }
+        proc->deleteLater();
+    });
+    proc->start(m_adb->adbPath(), {QStringLiteral("-s"), serial, QStringLiteral("shell"), cmd});
 }
 
 bool MainWindow::eventFilter(QObject *watched, QEvent *event) {
