@@ -5,6 +5,7 @@
 #include <QFileInfo>
 #include <QProcess>
 #include <QProcessEnvironment>
+#include <QRegularExpression>
 #include <QTimer>
 #include <QWidget>
 
@@ -97,6 +98,8 @@ void ScrcpyProcess::start(const QString &serial) {
     if (opt.turnScreenOff)
         args << QStringLiteral("--turn-screen-off");
     args << QStringLiteral("--no-audio")
+         // 每秒把渲染帧率打进日志，状态栏的 fps 就来自这里（不是估的）
+         << QStringLiteral("--print-fps")
          << QStringLiteral("--window-borderless")
          // 先在屏幕外创建：scrcpy 的窗口是独立顶层窗口，嵌入完成前会单独露出来，
          // 放到屏幕外等嵌入时再 MoveWindow 进宿主，用户就只看到主窗口。
@@ -113,14 +116,10 @@ void ScrcpyProcess::start(const QString &serial) {
     m_proc->setWorkingDirectory(QFileInfo(m_exePath).absolutePath());
 
     connect(m_proc, &QProcess::readyReadStandardOutput, this, [this]() {
-        const QString out = QString::fromLocal8Bit(m_proc->readAllStandardOutput()).trimmed();
-        if (!out.isEmpty())
-            emit statusText(out);
+        consumeLog(m_stdoutBuf, m_proc->readAllStandardOutput());
     });
     connect(m_proc, &QProcess::readyReadStandardError, this, [this]() {
-        const QString err = QString::fromLocal8Bit(m_proc->readAllStandardError()).trimmed();
-        if (!err.isEmpty())
-            emit errorOccurred(err);
+        consumeLog(m_stderrBuf, m_proc->readAllStandardError());
     });
     connect(m_proc, &QProcess::finished, this, [this](int code, QProcess::ExitStatus) {
         const bool userStop = m_userStopped;
@@ -153,6 +152,34 @@ void ScrcpyProcess::start(const QString &serial) {
 
     emit runningChanged(true);
     emit statusText(QStringLiteral("scrcpy 启动中…"));
+}
+
+// scrcpy 的日志行：落一份到应用日志，同时提取 "Texture: WxH" 与 "N fps"。
+void ScrcpyProcess::consumeLog(QByteArray &buf, const QByteArray &chunk) {
+    if (!chunk.isEmpty())
+        buf.append(chunk);
+
+    static const QRegularExpression sizeRe(QStringLiteral("Texture: (\\d+)x(\\d+)"));
+    static const QRegularExpression fpsRe(QStringLiteral("(\\d+) fps"));
+
+    int idx;
+    while ((idx = buf.indexOf('\n')) >= 0) {
+        const QString line = QString::fromUtf8(buf.left(idx)).trimmed();
+        buf.remove(0, idx + 1);
+        if (line.isEmpty())
+            continue;
+        qDebug().noquote() << "[scrcpy]" << line;
+
+        const auto sz = sizeRe.match(line);
+        if (sz.hasMatch())
+            emit videoSizeChanged(sz.captured(1).toInt(), sz.captured(2).toInt());
+        const auto fp = fpsRe.match(line);
+        if (fp.hasMatch())
+            emit fpsChanged(fp.captured(1).toInt());
+    }
+    // 防御脏数据把缓冲撑爆（正常不会有这么长的行）
+    if (buf.size() > 64 * 1024)
+        buf = buf.right(4096);
 }
 
 struct EnumCtx {

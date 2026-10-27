@@ -7,7 +7,7 @@ set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
 
 # Widgets 而非 Quick：本机 Qt Quick 场景图渲染不可用（渲染循环启动后不绘制），
 # Widgets 的 backing store 渲染正常，镜像走 scrcpy 子进程窗口嵌入。
-find_package(Qt6 REQUIRED COMPONENTS Widgets)
+find_package(Qt6 REQUIRED COMPONENTS Widgets Network)
 
 qt_standard_project_setup()
 
@@ -17,13 +17,14 @@ qt_add_executable(devboard-qt
     src/AdbClient.cpp src/AdbClient.h
     src/ScrcpyProcess.cpp src/ScrcpyProcess.h
     src/Panels.cpp src/Panels.h
+    src/MirrorStats.cpp src/MirrorStats.h
     src/PairDialog.cpp src/PairDialog.h
     src/Settings.cpp src/Settings.h
     src/SettingsDialog.cpp src/SettingsDialog.h
     src/AppLog.cpp src/AppLog.h
 )
 
-target_link_libraries(devboard-qt PRIVATE Qt6::Widgets)
+target_link_libraries(devboard-qt PRIVATE Qt6::Widgets Qt6::Network)
 
 # 显式 GUI 子系统：否则 exe 启动时会带一个黑色控制台窗口（用户看到"两个窗口"）。
 # 诊断信息仍由 main.cpp 的消息处理器写日志文件。

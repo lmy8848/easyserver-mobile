@@ -32,6 +32,7 @@
 #include <QWheelEvent>
 
 #include "AppLog.h"
+#include "MirrorStats.h"
 #include "Panels.h"
 #include "PairDialog.h"
 #include "ScrcpyProcess.h"
@@ -41,6 +42,7 @@
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     m_adb = new AdbClient(this);
     m_scrcpy = new ScrcpyProcess(this);
+    m_stats = new MirrorStats(m_adb, this);
 
     buildUi();
     applyDarkTheme();
@@ -62,9 +64,27 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
         m_connectBtn->setEnabled(!running);
         m_disconnectBtn->setEnabled(running);
         m_status->setText(running ? QStringLiteral("镜像运行中") : QStringLiteral("镜像已停止"));
-        if (running)
+        if (running) {
             m_mirrorHost->setFocus(Qt::OtherFocusReason);
+            m_stats->setSerial(m_serial);
+        } else {
+            m_stats->clear();
+            m_videoW = m_videoH = 0;
+            m_renderFps = -1;
+            updateStatsLabel();
+        }
     });
+    // 分辨率与帧率来自 scrcpy 客户端日志（Texture / --print-fps），不是本地估算
+    connect(m_scrcpy, &ScrcpyProcess::videoSizeChanged, this, [this](int w, int h) {
+        m_videoW = w;
+        m_videoH = h;
+        updateStatsLabel();
+    });
+    connect(m_scrcpy, &ScrcpyProcess::fpsChanged, this, [this](int fps) {
+        m_renderFps = fps;
+        updateStatsLabel();
+    });
+    connect(m_stats, &MirrorStats::changed, this, &MainWindow::updateStatsLabel);
     connect(m_scrcpy, &ScrcpyProcess::statusText, this, [this](const QString &t) {
         m_status->setText(t);
         // 真正嵌入成功才算连上，此前不消耗重试预算
@@ -294,6 +314,16 @@ void MainWindow::buildUi() {
     // ---- 状态栏 ----
     m_status = new QLabel(QStringLiteral("就绪"), this);
     statusBar()->addWidget(m_status, 1);
+    // 镜像实时指标固定在状态栏右侧：分辨率 / 帧率 / 实际码率 / RTT / 累计流量
+    m_statsLabel = new QLabel(this);
+    m_statsLabel->setObjectName(QStringLiteral("mirrorStats"));
+    m_statsLabel->setStyleSheet(QStringLiteral("color:#8fa3bf; padding-right:8px;"));
+    m_statsLabel->setToolTip(QStringLiteral(
+        "分辨率/帧率：scrcpy 客户端日志\n"
+        "码率：设备端 scrcpy 进程实际写入 socket 的字节数（静止画面接近 0 属正常）\n"
+        "RTT：设备 ping 电脑的往返时间，反映无线链路，不等于画面延迟\n"
+        "累计：本次连接以来 scrcpy 进程写出的总字节数"));
+    statusBar()->addPermanentWidget(m_statsLabel);
 
     // ---- 面板信号 ----
     connect(m_panels, &Panels::shellCommandEntered, this, &MainWindow::onShellCommand);
@@ -556,6 +586,38 @@ void MainWindow::rotateScreen() {
                                 "settings put system user_rotation %1")
                      .arg(m_rotation));
     m_status->setText(QStringLiteral("屏幕方向已切换为 %1°").arg(m_rotation * 90));
+}
+
+void MainWindow::updateStatsLabel() {
+    if (!m_statsLabel)
+        return;
+    if (!m_scrcpy->isRunning()) {
+        m_statsLabel->clear();
+        return;
+    }
+
+    auto human = [](qint64 bytes) {
+        if (bytes < 1024)
+            return QStringLiteral("%1 B").arg(bytes);
+        if (bytes < 1024 * 1024)
+            return QStringLiteral("%1 KB").arg(bytes / 1024);
+        if (bytes < 1024LL * 1024 * 1024)
+            return QStringLiteral("%1 MB").arg(bytes / (1024.0 * 1024.0), 0, 'f', 1);
+        return QStringLiteral("%1 GB").arg(bytes / (1024.0 * 1024.0 * 1024.0), 0, 'f', 2);
+    };
+
+    QStringList parts;
+    if (m_videoW > 0)
+        parts << QStringLiteral("%1x%2").arg(m_videoW).arg(m_videoH);
+    if (m_renderFps >= 0)
+        parts << QStringLiteral("%1 fps").arg(m_renderFps);
+    if (m_stats->valid())
+        parts << QStringLiteral("%1 Mbps").arg(m_stats->kbps() / 1000.0, 0, 'f', 2);
+    if (m_stats->rttMs() >= 0)
+        parts << QStringLiteral("RTT %1 ms").arg(m_stats->rttMs());
+    if (m_stats->totalBytes() > 0)
+        parts << QStringLiteral("累计 %1").arg(human(m_stats->totalBytes()));
+    m_statsLabel->setText(parts.join(QStringLiteral(" · ")));
 }
 
 void MainWindow::onConnectClicked() {

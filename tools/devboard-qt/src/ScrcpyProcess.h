@@ -46,13 +46,21 @@ signals:
     void errorOccurred(const QString &text);
     // 非用户主动停止（崩溃/设备掉线）时发出，供上层自动重连
     void exitedUnexpectedly(int code);
+    // 编码分辨率（scrcpy 收到首帧后打印 "Texture: WxH"）
+    void videoSizeChanged(int width, int height);
+    // 渲染帧率（--print-fps 每秒打印 "N fps"）
+    void fpsChanged(int fps);
 
 private:
     static QString locateScrcpy();
     void pollForWindow();
     void embedWindow(HWND hwnd);
+    // 逐行消费 scrcpy 的日志：既落应用日志，也提取分辨率/帧率
+    void consumeLog(QByteArray &buf, const QByteArray &chunk);
 
     QProcess *m_proc = nullptr;
+    QByteArray m_stdoutBuf;
+    QByteArray m_stderrBuf;
     QTimer *m_pollTimer = nullptr;
     QWidget *m_host = nullptr;
     HWND m_child = nullptr;

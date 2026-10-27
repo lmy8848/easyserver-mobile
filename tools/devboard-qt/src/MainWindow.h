@@ -15,6 +15,7 @@ class QCloseEvent;
 
 class ScrcpyProcess;
 class Panels;
+class MirrorStats;
 
 // 主窗口：顶部设备栏 + 按键栏 + 左侧镜像宿主 + 右侧面板 + 状态栏
 class MainWindow : public QMainWindow {
@@ -60,6 +61,7 @@ private:
     bool currentOnline() const;
     void sendKey(int keycode);
     void rotateScreen();
+    void updateStatsLabel();
 
     QString ensureCaptureDir();
     void reportCapture(const QString &label, const QString &path, bool ok,
@@ -73,6 +75,7 @@ private:
 
     AdbClient *m_adb = nullptr;
     ScrcpyProcess *m_scrcpy = nullptr;
+    MirrorStats *m_stats = nullptr;
 
     QComboBox *m_deviceBox = nullptr;
     QLabel *m_deviceState = nullptr;
@@ -81,6 +84,11 @@ private:
     Panels *m_panels = nullptr;
     QWidget *m_mirrorHost = nullptr;
     QLabel *m_status = nullptr;
+    QLabel *m_statsLabel = nullptr;
+    // scrcpy 日志给出的编码分辨率与渲染帧率
+    int m_videoW = 0;
+    int m_videoH = 0;
+    int m_renderFps = -1;
 
     QList<AdbClient::Device> m_devices;
     QTimer *m_autoReconnect = nullptr;
