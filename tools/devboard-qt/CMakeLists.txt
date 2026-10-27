@@ -1,69 +1,40 @@
-cmake_minimum_required(VERSION 3.21)
-
-# CMake 4.x 兼容：Qt 6.5 的工程脚本基于旧策略
-set(CMAKE_POLICY_VERSION_MINIMUM 3.5 CACHE STRING "" FORCE)
-
-project(devboard-qt VERSION 0.1.0 LANGUAGES CXX)
+cmake_minimum_required(VERSION 3.16)
+project(devboard-qt LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_AUTOMOC ON)
+set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
 
-find_package(Qt6 REQUIRED COMPONENTS Quick QuickControls2)
+# Widgets 而非 Quick：本机 Qt Quick 场景图渲染不可用（渲染循环启动后不绘制），
+# Widgets 的 backing store 渲染正常，镜像走 scrcpy 子进程窗口嵌入。
+find_package(Qt6 REQUIRED COMPONENTS Widgets)
 
-qt_standard_project_setup(REQUIRES 6.5)
+qt_standard_project_setup()
 
 qt_add_executable(devboard-qt
     src/main.cpp
-    src/core/AdbClient.h
-    src/core/AdbClient.cpp
-    src/core/ScrcpyServer.h
-    src/core/ScrcpyServer.cpp
-    src/core/VideoSocket.h
-    src/core/ControlSocket.h
-    src/media/FfmpegDecoder.h
-    src/app/StreamWorker.h
-    src/app/MirrorImageProvider.h
-    src/app/MirrorController.h
-    src/app/MirrorController.cpp
-    src/app/DeviceTools.h
-    src/app/DeviceTools.cpp
+    src/MainWindow.cpp src/MainWindow.h
+    src/AdbClient.cpp src/AdbClient.h
+    src/ScrcpyProcess.cpp src/ScrcpyProcess.h
+    src/Panels.cpp src/Panels.h
 )
 
-# FFmpeg（D:/devboard-deps/ffmpeg，gyan shared 构建：include + MSVC .lib）
-set(FFMPEG_ROOT "D:/devboard-deps/ffmpeg/ffmpeg-9.0.2-full_build-shared"
-    CACHE PATH "FFmpeg shared dev root")
-if (EXISTS "${FFMPEG_ROOT}/include/libavcodec/avcodec.h")
-    target_include_directories(devboard-qt PRIVATE "${FFMPEG_ROOT}/include")
-    target_link_libraries(devboard-qt PRIVATE
-        "${FFMPEG_ROOT}/lib/avcodec.lib"
-        "${FFMPEG_ROOT}/lib/avutil.lib"
-        "${FFMPEG_ROOT}/lib/swscale.lib"
-    )
-    file(GLOB FFMPEG_DLLS "${FFMPEG_ROOT}/bin/*.dll")
-    add_custom_command(TARGET devboard-qt POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            ${FFMPEG_DLLS} $<TARGET_FILE_DIR:devboard-qt>
-    )
+target_link_libraries(devboard-qt PRIVATE Qt6::Widgets)
+
+# Windows 头文件需要（避免 min/max 宏、隐藏控制台）
+target_compile_definitions(devboard-qt PRIVATE NOMINMAX)
+
+if (WIN32)
+    target_link_libraries(devboard-qt PRIVATE user32)
 endif()
 
-qt_add_qml_module(devboard-qt
-    URI devboard
-    VERSION 1.0
-    QML_FILES
-        src/ui/qml/Main.qml
-)
-
-target_link_libraries(devboard-qt PRIVATE
-    Qt6::Quick
-    Qt6::QuickControls2
-)
-
-# Windows GUI 程序（无控制台）
-set_target_properties(devboard-qt PROPERTIES
-    WIN32_EXECUTABLE TRUE
-)
-
-install(TARGETS devboard-qt
-    RUNTIME DESTINATION .
-)
+# 部署 Qt 运行时（windeployqt，避免手工复制 DLL）
+if (WIN32)
+    get_target_property(_qt_qmake Qt6::qmake IMPORTED_LOCATION)
+    get_filename_component(_qt_bin_dir "${_qt_qmake}" DIRECTORY)
+    add_custom_command(TARGET devboard-qt POST_BUILD
+        COMMAND "${_qt_bin_dir}/windeployqt.exe" --release --no-translations
+                "$<TARGET_FILE:devboard-qt>"
+        COMMENT "Deploying Qt runtime via windeployqt"
+    )
+endif()

@@ -1,4 +1,12 @@
-build/
-*.user
-.vs/
-CMakeUserPresets.json
+# 构建产物
+build*/
+cmake-build*/
+
+# 第三方运行时：scrcpy 官方发布包与源码（体积大，按需自行下载）
+third_party/scrcpy-win64/
+third_party/scrcpy-src/
+
+# 本地调试产物
+*.log
+screenshots/
+recordings/
