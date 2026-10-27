@@ -1,7 +1,7 @@
 # DevBoard Qt 重构计划（方案 B：Qt 壳 + scrcpy 协议）
 
 > 状态：评审通过 ｜ 版本：v1.1 ｜ 日期：2026-10-26
-> 目标产物：`tools/devboard-qt/`（新），`tools/devboard/`（Flutter 版冻结保留）
+> 目标产物：`tools/devboard-qt/`（唯一实现）。旧 Flutter 版 `tools/devboard/` 已于 2026-10-27 删除（代码见 git 历史）。
 > UI 规范：见 [UI.md](UI.md)（布局/交互/快捷键/状态机，实现以其为准）
 
 > **实现现状（2026-10-27）**：架构在方案 B 的基础上做了一次调整——Qt Quick 场景图在本机渲染完全失效（渲染循环启动、QRhi 创建成功，但从不绘制；最小 QML 应用同样冻结；Qt Widgets 正常），自研协议客户端链路无法出画。已改为 **Qt Widgets 宿主 + scrcpy.exe 官方客户端子窗口嵌入**：
