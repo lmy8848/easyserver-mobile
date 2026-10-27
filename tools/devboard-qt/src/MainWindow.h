@@ -59,6 +59,10 @@ private:
     QLabel *m_status = nullptr;
 
     QList<AdbClient::Device> m_devices;
+    QTimer *m_autoReconnect = nullptr;
+    QString m_serial;
+    int m_retries = 0;
+
     QProcess *m_logcat = nullptr;
     QByteArray m_logcatTail;
     QTimer *m_logFlush = nullptr;

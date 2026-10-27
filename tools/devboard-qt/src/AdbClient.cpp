@@ -121,3 +121,97 @@ void AdbClient::shell(const QString &serial, const QString &command) {
     });
     proc->start(m_adbPath, {QStringLiteral("-s"), serial, QStringLiteral("shell"), command});
 }
+
+void AdbClient::pair(const QString &hostPort, const QString &code) {
+    auto *proc = new QProcess(this);
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    env.insert(QStringLiteral("MSYS_NO_PATHCONV"), QStringLiteral("1"));
+    proc->setProcessEnvironment(env);
+    connect(proc, &QProcess::finished, this, [this, proc, hostPort](int rc, QProcess::ExitStatus) {
+        const QString out = QString::fromLocal8Bit(proc->readAllStandardOutput()).trimmed();
+        QString err = QString::fromLocal8Bit(proc->readAllStandardError()).trimmed();
+        const bool ok = rc == 0 && out.contains(QStringLiteral("Successfully paired"), Qt::CaseInsensitive);
+        QString msg = ok ? QStringLiteral("配对成功") : (err.isEmpty() ? out : err);
+        if (msg.isEmpty())
+            msg = QStringLiteral("配对失败（rc=%1）").arg(rc);
+        qInfo() << "[adb] pair" << hostPort << "rc=" << rc << "msg=" << msg;
+        emit pairFinished(ok, msg);
+        proc->deleteLater();
+    });
+    connect(proc, &QProcess::errorOccurred, this, [this, proc](QProcess::ProcessError e) {
+        if (e == QProcess::FailedToStart)
+            emit pairFinished(false, QStringLiteral("adb 启动失败：%1").arg(m_adbPath));
+        proc->deleteLater();
+    });
+    proc->start(m_adbPath, {QStringLiteral("pair"), hostPort, code});
+}
+
+void AdbClient::connectDevice(const QString &hostPort) {
+    auto *proc = new QProcess(this);
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    env.insert(QStringLiteral("MSYS_NO_PATHCONV"), QStringLiteral("1"));
+    proc->setProcessEnvironment(env);
+    connect(proc, &QProcess::finished, this, [this, proc](int rc, QProcess::ExitStatus) {
+        const QString out = QString::fromLocal8Bit(proc->readAllStandardOutput()).trimmed();
+        const QString err = QString::fromLocal8Bit(proc->readAllStandardError()).trimmed();
+        qInfo() << "[adb] connect" << "rc=" << rc << "out=" << out << "err=" << err;
+        if (rc == 0 && out.contains(QStringLiteral("connected"), Qt::CaseInsensitive)) {
+            refreshDevices();
+            emit commandOutput(QStringLiteral("已连接 %1").arg(out));
+        } else {
+            emit errorOccurred(err.isEmpty() ? out : err);
+        }
+        proc->deleteLater();
+    });
+    connect(proc, &QProcess::errorOccurred, this, [this, proc](QProcess::ProcessError e) {
+        if (e == QProcess::FailedToStart)
+            emit errorOccurred(QStringLiteral("adb 启动失败：%1").arg(m_adbPath));
+        proc->deleteLater();
+    });
+    proc->start(m_adbPath, {QStringLiteral("connect"), hostPort});
+}
+
+// adb mdns services 输出形如：
+//   List of discovered mdns services
+//   adb-XXXXXX-YYYYYY	_adb-tls-connect._tcp.	192.168.1.10:38177
+//   adb-XXXXXX-ZZZZZZ	_adb-tls-pairing._tcp.	192.168.1.10:37891
+// 正常连接中的设备可能只暴露 connect 服务，配对弹窗打开期间才出现 pairing 服务。
+void AdbClient::scanMdns() {
+    auto *proc = new QProcess(this);
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    env.insert(QStringLiteral("MSYS_NO_PATHCONV"), QStringLiteral("1"));
+    proc->setProcessEnvironment(env);
+    connect(proc, &QProcess::finished, this, [this, proc](int rc, QProcess::ExitStatus) {
+        QString out = QString::fromLocal8Bit(proc->readAllStandardOutput());
+        QString err = QString::fromLocal8Bit(proc->readAllStandardError());
+        if (out.trimmed().isEmpty())
+            out = err;
+        QStringList services;
+        for (const QString &raw : out.split(QLatin1Char('\n'))) {
+            const QString line = raw.trimmed();
+            if (line.isEmpty() || line.startsWith(QStringLiteral("List of")))
+                continue;
+            // 名字与类型之间是制表符或空格
+            static const QRegularExpression re(
+                QStringLiteral(R"(^(\S+)\s+(_adb-tls-(pairing|connect)\._tcp\.)\s+(\S+)$)"));
+            const auto m = re.match(line);
+            if (!m.hasMatch())
+                continue;
+            const QString kind = m.captured(2);       // pairing / connect
+            const QString name = m.captured(1);
+            const QString addr = m.captured(3);
+            services.append(kind + QLatin1Char('|') + name + QLatin1Char('|') + addr);
+        }
+        qInfo() << "[adb] mdns services:" << services;
+        emit mdnsServices(services);
+        proc->deleteLater();
+    });
+    connect(proc, &QProcess::errorOccurred, this, [this, proc](QProcess::ProcessError e) {
+        if (e == QProcess::FailedToStart) {
+            emit mdnsServices({});
+            emit errorOccurred(QStringLiteral("adb 启动失败：%1").arg(m_adbPath));
+        }
+        proc->deleteLater();
+    });
+    proc->start(m_adbPath, {QStringLiteral("mdns"), QStringLiteral("services")});
+}

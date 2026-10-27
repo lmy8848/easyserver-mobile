@@ -51,6 +51,12 @@ void ScrcpyProcess::start(const QString &serial, int maxSize, int maxFps) {
         emit statusText(QStringLiteral("镜像已在运行"));
         return;
     }
+    m_userStopped = false;
+    if (m_proc) {
+        m_proc->disconnect(this);
+        m_proc->deleteLater();
+        m_proc = nullptr;
+    }
     if (m_exePath.isEmpty() || (m_exePath != QStringLiteral("scrcpy") && !QFileInfo::exists(m_exePath))) {
         emit errorOccurred(QStringLiteral("找不到 scrcpy.exe，已探测：%1").arg(m_exePath));
         return;
@@ -98,12 +104,15 @@ void ScrcpyProcess::start(const QString &serial, int maxSize, int maxFps) {
             emit errorOccurred(err);
     });
     connect(m_proc, &QProcess::finished, this, [this](int code, QProcess::ExitStatus) {
-        qInfo() << "[scrcpy] exited code=" << code;
+        const bool userStop = m_userStopped;
+        qInfo() << "[scrcpy] exited code=" << code << "userStop=" << userStop;
         m_child = nullptr;
         if (m_pollTimer)
             m_pollTimer->stop();
         emit runningChanged(false);
         emit statusText(QStringLiteral("scrcpy 已退出（code=%1）").arg(code));
+        if (!userStop)
+            emit exitedUnexpectedly(code);
     });
     connect(m_proc, &QProcess::errorOccurred, this, [this](QProcess::ProcessError e) {
         if (e == QProcess::FailedToStart)
@@ -191,6 +200,7 @@ void ScrcpyProcess::embedWindow(HWND hwnd) {
 }
 
 void ScrcpyProcess::stop() {
+    m_userStopped = true;
     if (m_pollTimer)
         m_pollTimer->stop();
 

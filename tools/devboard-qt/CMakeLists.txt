@@ -17,6 +17,7 @@ qt_add_executable(devboard-qt
     src/AdbClient.cpp src/AdbClient.h
     src/ScrcpyProcess.cpp src/ScrcpyProcess.h
     src/Panels.cpp src/Panels.h
+    src/PairDialog.cpp src/PairDialog.h
 )
 
 target_link_libraries(devboard-qt PRIVATE Qt6::Widgets)

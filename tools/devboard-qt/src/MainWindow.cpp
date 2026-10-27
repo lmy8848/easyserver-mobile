@@ -14,12 +14,14 @@
 #include <QShortcut>
 #include <QSplitter>
 #include <QStatusBar>
+#include <QInputDialog>
 #include <QTimer>
 #include <QToolBar>
 #include <QVBoxLayout>
 #include <QWheelEvent>
 
 #include "Panels.h"
+#include "PairDialog.h"
 #include "ScrcpyProcess.h"
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
@@ -47,6 +49,34 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     });
     connect(m_scrcpy, &ScrcpyProcess::statusText, this, [this](const QString &t) {
         m_status->setText(t);
+        // 真正嵌入成功才算连上，此前不消耗重试预算
+        if (t == QStringLiteral("镜像已嵌入"))
+            m_retries = 0;
+    });
+
+    // 非主动停止（无线 adb 掉线、scrcpy 崩溃）时自动重连，3s 一次、最多 6 次
+    m_autoReconnect = new QTimer(this);
+    m_autoReconnect->setSingleShot(true);
+    m_autoReconnect->setInterval(3000);
+    connect(m_autoReconnect, &QTimer::timeout, this, [this]() {
+        if (m_serial.isEmpty())
+            return;
+        if (m_retries >= 6) {
+            m_status->setText(QStringLiteral("自动重连已暂停（6 次失败）· 检查手机后点「连接镜像」"));
+            return;
+        }
+        ++m_retries;
+        m_status->setText(QStringLiteral("重连中…（第 %1 次）").arg(m_retries));
+        qInfo() << "[reconnect] attempt" << m_retries << m_serial;
+        m_adb->refreshDevices();
+        m_scrcpy->start(m_serial, 720, 60);
+    });
+    connect(m_scrcpy, &ScrcpyProcess::exitedUnexpectedly, this, [this](int code) {
+        if (m_serial.isEmpty())
+            return;
+        m_panels->appendShell(QStringLiteral("[scrcpy] 意外退出 code=%1，将自动重连").arg(code));
+        m_status->setText(QStringLiteral("镜像断开（code=%1），3 秒后重连").arg(code));
+        m_autoReconnect->start();
     });
     connect(m_scrcpy, &ScrcpyProcess::errorOccurred, this, [this](const QString &e) {
         m_panels->appendShell(QStringLiteral("[scrcpy] ") + e);
@@ -87,6 +117,22 @@ void MainWindow::buildUi() {
     connect(refreshBtn, &QPushButton::clicked, this, &MainWindow::onRefreshClicked);
     bar->addWidget(refreshBtn);
 
+    // mDNS 在部分 Windows 环境发现不到服务（需要 Bonjour），保留手动 adb connect 入口
+    auto *connectDevBtn = new QPushButton(QStringLiteral("连接设备"), this);
+    connect(connectDevBtn, &QPushButton::clicked, this, [this]() {
+        bool ok = false;
+        const QString addr =
+            QInputDialog::getText(this, QStringLiteral("连接无线设备"),
+                                  QStringLiteral("adb connect 地址（手机「无线调试」页面显示的 IP:端口）"),
+                                  QLineEdit::Normal, m_serial, &ok)
+                .trimmed();
+        if (!ok || addr.isEmpty())
+            return;
+        m_status->setText(QStringLiteral("正在连接 %1…").arg(addr));
+        m_adb->connectDevice(addr);
+    });
+    bar->addWidget(connectDevBtn);
+
     bar->addSeparator();
     m_deviceState = new QLabel(QStringLiteral("未连接"), this);
     m_deviceState->setMinimumWidth(120);
@@ -102,6 +148,23 @@ void MainWindow::buildUi() {
     m_disconnectBtn->setEnabled(false);
     connect(m_disconnectBtn, &QPushButton::clicked, this, &MainWindow::onDisconnectClicked);
     bar->addWidget(m_disconnectBtn);
+
+    bar->addSeparator();
+    auto *pairBtn = new QPushButton(QStringLiteral("无线配对"), this);
+    connect(pairBtn, &QPushButton::clicked, this, [this]() {
+        auto *dlg = new PairDialog(m_adb, this);
+        connect(dlg, &PairDialog::deviceConnected, this, [this](const QString &serial) {
+            if (!serial.isEmpty()) {
+                m_serial = serial;
+                m_status->setText(QStringLiteral("已配对并连接 %1").arg(serial));
+            }
+            // connect 是异步的，稍等再刷一次设备列表
+            QTimer::singleShot(1500, this, [this]() { m_adb->refreshDevices(); });
+        });
+        dlg->exec();
+        dlg->deleteLater();
+    });
+    bar->addWidget(pairBtn);
 
     // ---- 中央：左镜像 + 右面板 ----
     auto *split = new QSplitter(Qt::Horizontal, this);
@@ -290,11 +353,20 @@ void MainWindow::onConnectClicked() {
 void MainWindow::connectSerial(const QString &serial) {
     if (serial.isEmpty())
         return;
+    m_serial = serial;
+    m_retries = 0;
     m_panels->appendShell(QStringLiteral("[连接] ") + serial);
     m_scrcpy->start(serial, 720, 60);
 }
 
-void MainWindow::onDisconnectClicked() { m_scrcpy->stop(); }
+void MainWindow::onDisconnectClicked() {
+    // 手动断开：停重连，避免刚断开又被拉起来
+    m_serial.clear();
+    m_retries = 0;
+    if (m_autoReconnect)
+        m_autoReconnect->stop();
+    m_scrcpy->stop();
+}
 
 void MainWindow::onShellCommand(const QString &cmd) {
     const QString serial = currentSerial();

@@ -36,6 +36,8 @@ signals:
     void runningChanged(bool running);
     void statusText(const QString &text);
     void errorOccurred(const QString &text);
+    // 非用户主动停止（崩溃/设备掉线）时发出，供上层自动重连
+    void exitedUnexpectedly(int code);
 
 private:
     static QString locateScrcpy();
@@ -48,4 +50,5 @@ private:
     HWND m_child = nullptr;
     QString m_exePath;
     QString m_title;
+    bool m_userStopped = false;
 };
