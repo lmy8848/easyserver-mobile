@@ -54,15 +54,25 @@ void Panels::buildLogTab() {
     m_logFilter = new QLineEdit(page);
     m_logFilter->setPlaceholderText(QStringLiteral("过滤关键字"));
     m_pauseLog = new QCheckBox(QStringLiteral("暂停"), page);
+    m_logcatBtn = new QPushButton(QStringLiteral("开始抓取"), page);
     auto *clearBtn = new QPushButton(QStringLiteral("清空"), page);
     bar->addWidget(m_logFilter, 1);
     bar->addWidget(m_pauseLog);
+    bar->addWidget(m_logcatBtn);
     bar->addWidget(clearBtn);
+    connect(m_logcatBtn, &QPushButton::clicked, this, [this]() {
+        if (m_logcatRunning)
+            emit logcatStopRequested();
+        else
+            emit logcatStartRequested();
+    });
 
     m_logOut = new QPlainTextEdit(page);
     m_logOut->setReadOnly(true);
-    m_logOut->setPlaceholderText(QStringLiteral("logcat 输出（切换到此页时开始抓取）"));
-    m_logOut->setMaximumBlockCount(4000);
+    m_logOut->setPlaceholderText(QStringLiteral("logcat 输出（F5 开始/停止抓取）"));
+    m_logOut->setMaximumBlockCount(2000);
+    m_logOut->setUndoRedoEnabled(false);
+    m_logOut->setLineWrapMode(QPlainTextEdit::NoWrap);
     connect(clearBtn, &QPushButton::clicked, this, &Panels::clearLog);
 
     lay->addLayout(bar);
@@ -147,7 +157,35 @@ void Panels::appendLog(const QString &text) {
     m_logOut->moveCursor(QTextCursor::End);
 }
 
+void Panels::appendLogLines(const QStringList &lines) {
+    if (lines.isEmpty() || m_pauseLog->isChecked())
+        return;
+    const QString filter = m_logFilter->text().trimmed();
+    QString batch;
+    batch.reserve(8192);
+    int taken = 0;
+    for (const QString &line : lines) {
+        if (!filter.isEmpty() && !line.contains(filter))
+            continue;
+        batch += line;
+        batch += QLatin1Char('\n');
+        if (++taken >= 300)
+            break;
+    }
+    if (batch.isEmpty())
+        return;
+    QTextCursor cur = m_logOut->textCursor();
+    cur.movePosition(QTextCursor::End);
+    m_logOut->setTextCursor(cur);
+    m_logOut->insertPlainText(batch);
+}
+
 void Panels::clearLog() { m_logOut->clear(); }
+
+void Panels::setLogcatRunning(bool running) {
+    m_logcatRunning = running;
+    m_logcatBtn->setText(running ? QStringLiteral("停止抓取") : QStringLiteral("开始抓取"));
+}
 
 void Panels::setInfo(const QString &text) { m_infoOut->setPlainText(text); }
 

@@ -10,6 +10,7 @@ class QLabel;
 class QTabWidget;
 class QPushButton;
 class QWidget;
+class QProcess;
 
 class ScrcpyProcess;
 class Panels;
@@ -21,6 +22,11 @@ public:
     explicit MainWindow(QWidget *parent = nullptr);
     ~MainWindow() override;
 
+protected:
+    // 镜像区由 scrcpy 子窗口占据，Qt 收不到那里的鼠标/键盘焦点；
+    // 在应用级拦截键盘与滚轮，转发给 scrcpy 窗口。
+    bool eventFilter(QObject *watched, QEvent *event) override;
+
 private slots:
     void onDevicesChanged(const QList<AdbClient::Device> &devices);
     void onConnectClicked();
@@ -28,6 +34,9 @@ private slots:
     void onRefreshClicked();
     void onShellCommand(const QString &cmd);
     void onRefreshInfo();
+    void onLogcatStart();
+    void onLogcatStop();
+    void flushLogcat();
 
 private:
     void buildUi();
@@ -47,4 +56,8 @@ private:
     QLabel *m_status = nullptr;
 
     QList<AdbClient::Device> m_devices;
+    QProcess *m_logcat = nullptr;
+    QByteArray m_logcatTail;
+    QTimer *m_logFlush = nullptr;
+    int m_logDropped = 0;
 };

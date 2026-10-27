@@ -5,15 +5,19 @@
 #include <QFileDialog>
 #include <QFrame>
 #include <QHBoxLayout>
+#include <QKeyEvent>
 #include <QLabel>
 #include <QMessageBox>
 #include <QProcess>
+#include <QProcessEnvironment>
 #include <QPushButton>
+#include <QShortcut>
 #include <QSplitter>
 #include <QStatusBar>
 #include <QTimer>
 #include <QToolBar>
 #include <QVBoxLayout>
+#include <QWheelEvent>
 
 #include "Panels.h"
 #include "ScrcpyProcess.h"
@@ -38,6 +42,8 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
         m_connectBtn->setEnabled(!running);
         m_disconnectBtn->setEnabled(running);
         m_status->setText(running ? QStringLiteral("镜像运行中") : QStringLiteral("镜像已停止"));
+        if (running)
+            m_mirrorHost->setFocus(Qt::OtherFocusReason);
     });
     connect(m_scrcpy, &ScrcpyProcess::statusText, this, [this](const QString &t) {
         m_status->setText(t);
@@ -102,6 +108,7 @@ void MainWindow::buildUi() {
 
     m_mirrorHost = new QWidget(split);
     m_mirrorHost->setMinimumSize(360, 480);
+    m_mirrorHost->setFocusPolicy(Qt::StrongFocus);
     m_mirrorHost->setAutoFillBackground(true);
     m_mirrorHost->setStyleSheet(QStringLiteral("background:#0f1116;"));
     m_mirrorHost->setLayout(new QVBoxLayout());
@@ -119,6 +126,7 @@ void MainWindow::buildUi() {
     setCentralWidget(split);
 
     m_scrcpy->setHost(m_mirrorHost);
+    qApp->installEventFilter(this);
 
     // ---- 状态栏 ----
     m_status = new QLabel(QStringLiteral("就绪"), this);
@@ -141,8 +149,27 @@ void MainWindow::buildUi() {
     });
     connect(m_panels, &Panels::listPackagesRequested, this, [this]() {
         const QString serial = currentSerial();
-        if (!serial.isEmpty())
-            m_adb->shell(serial, QStringLiteral("pm list packages -3"));
+        if (serial.isEmpty())
+            return;
+        auto *p = new QProcess(this);
+        connect(p, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
+                [this, p](int, QProcess::ExitStatus) {
+                    const QString out = QString::fromUtf8(p->readAllStandardOutput());
+                    m_panels->clearPackages();
+                    int count = 0;
+                    for (const QString &line : out.split(QLatin1Char('\n'))) {
+                        const QString l = line.trimmed();
+                        if (l.startsWith(QStringLiteral("package:"))) {
+                            m_panels->appendPackage(l.mid(8));
+                            ++count;
+                        }
+                    }
+                    m_status->setText(QStringLiteral("已列出 %1 个第三方应用").arg(count));
+                    p->deleteLater();
+                });
+        p->start(m_adb->adbPath(),
+                 {QStringLiteral("-s"), serial, QStringLiteral("shell"), QStringLiteral("pm"),
+                  QStringLiteral("list"), QStringLiteral("packages"), QStringLiteral("-3")});
     });
     connect(m_panels, &Panels::installApkRequested, this, [this]() {
         const QString serial = currentSerial();
@@ -160,6 +187,23 @@ void MainWindow::buildUi() {
         m_panels->appendShell(QString::fromLocal8Bit(p.readAllStandardOutput()));
         m_panels->appendShell(QString::fromLocal8Bit(p.readAllStandardError()));
     });
+    connect(m_panels, &Panels::logcatStartRequested, this, &MainWindow::onLogcatStart);
+    connect(m_panels, &Panels::logcatStopRequested, this, &MainWindow::onLogcatStop);
+
+    auto addShortcut = [this](const char *key, auto fn) {
+        auto *sc = new QShortcut(QKeySequence(QString::fromLatin1(key)), this);
+        sc->setContext(Qt::WindowShortcut);
+        connect(sc, &QShortcut::activated, this, fn);
+    };
+    addShortcut("F5", [this]() {
+        if (m_logcat)
+            onLogcatStop();
+        else
+            onLogcatStart();
+    });
+    addShortcut("F6", [this]() { m_panels->clearLog(); });
+    addShortcut("F7", [this]() { m_panels->refreshInfoRequested(); });
+    addShortcut("F8", [this]() { m_panels->listPackagesRequested(); });
     connect(m_panels, &Panels::uninstallPackageRequested, this, [this](const QString &pkg) {
         const QString serial = currentSerial();
         if (!serial.isEmpty())
@@ -278,3 +322,133 @@ void MainWindow::onRefreshInfo() {
         m_panels->setInfo(QStringLiteral("读取超时"));
     }
 }
+
+bool MainWindow::eventFilter(QObject *watched, QEvent *event) {
+    if (!m_scrcpy || !m_scrcpy->isRunning())
+        return QMainWindow::eventFilter(watched, event);
+    HWND child = m_scrcpy->childHandle();
+    if (!child)
+        return QMainWindow::eventFilter(watched, event);
+
+    const QEvent::Type type = event->type();
+
+    // 键盘：右侧面板控件持有焦点时让它自己处理，其余转发给 scrcpy。
+    if (type == QEvent::KeyPress || type == QEvent::KeyRelease) {
+        QWidget *fw = QApplication::focusWidget();
+        if (fw && m_panels->isAncestorOf(fw))
+            return QMainWindow::eventFilter(watched, event);
+        auto *ke = static_cast<QKeyEvent *>(event);
+        const UINT vk = static_cast<UINT>(ke->nativeVirtualKey());
+        if (vk == 0 || ke->isAutoRepeat())
+            return QMainWindow::eventFilter(watched, event);
+        const bool down = (type == QEvent::KeyPress);
+        const LPARAM lp = 1 | (static_cast<LPARAM>(MapVirtualKeyW(vk, MAPVK_VK_TO_VSC)) << 16);
+        PostMessageW(child, down ? WM_KEYDOWN : WM_KEYUP, vk, lp);
+        return true;
+    }
+
+    // 滚轮：鼠标不在右侧面板内时转发，手势滚动由 scrcpy 注入手机。
+    if (type == QEvent::Wheel) {
+        auto *we = static_cast<QWheelEvent *>(event);
+        QWidget *under = QApplication::widgetAt(we->globalPosition().toPoint());
+        if (under && m_panels->isAncestorOf(under))
+            return QMainWindow::eventFilter(watched, event);
+        const int delta = we->angleDelta().y();
+        if (delta == 0)
+            return QMainWindow::eventFilter(watched, event);
+        const QPoint gp = we->globalPosition().toPoint();
+        PostMessageW(child, WM_MOUSEWHEEL, MAKEWPARAM(0, delta), MAKELPARAM(gp.x(), gp.y()));
+        return true;
+    }
+
+    return QMainWindow::eventFilter(watched, event);
+}
+
+void MainWindow::onLogcatStart() {
+    const QString serial = currentSerial();
+    if (serial.isEmpty() || !currentOnline()) {
+        m_panels->appendLog(QStringLiteral("[错误] 没有在线设备"));
+        return;
+    }
+    if (m_logcat) {
+        QProcess *old = m_logcat;
+        m_logcat = nullptr;
+        old->disconnect(this);
+        old->kill();
+        old->waitForFinished(1000);
+        old->deleteLater();
+    }
+    m_logcatTail.clear();
+    m_logDropped = 0;
+    if (!m_logFlush) {
+        m_logFlush = new QTimer(this);
+        m_logFlush->setInterval(120);
+        connect(m_logFlush, &QTimer::timeout, this, &MainWindow::flushLogcat);
+    }
+    QProcess *proc = new QProcess(this);
+    m_logcat = proc;
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    env.insert(QStringLiteral("MSYS_NO_PATHCONV"), QStringLiteral("1"));
+    proc->setProcessEnvironment(env);
+    connect(proc, &QProcess::readyReadStandardOutput, this, [this]() {
+        m_logcatTail.append(m_logcat->readAllStandardOutput());
+        // 背压：UI 写入跟不上时丢弃最旧的一半，避免缓冲无限增长
+        if (m_logcatTail.size() > (1 << 20)) {
+            m_logcatTail = m_logcatTail.right(512 * 1024);
+            ++m_logDropped;
+        }
+        if (!m_logFlush->isActive())
+            m_logFlush->start();
+    });
+    connect(proc, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
+            [this, proc](int, QProcess::ExitStatus) {
+                flushLogcat();
+                m_panels->setLogcatRunning(false);
+                if (m_logcat == proc)
+                    m_logcat = nullptr;
+                proc->deleteLater();
+            });
+    proc->start(m_adb->adbPath(), {QStringLiteral("-s"), serial, QStringLiteral("logcat"),
+                                   QStringLiteral("-v"), QStringLiteral("time")});
+    m_panels->setLogcatRunning(true);
+    m_panels->appendLog(QStringLiteral("[logcat] 开始抓取 ") + serial);
+    qInfo() << "[logcat] started" << serial;
+}
+
+void MainWindow::flushLogcat() {
+    if (m_logFlush)
+        m_logFlush->stop();
+    if (m_logcatTail.isEmpty())
+        return;
+    // logcat 每秒可以刷几十行，逐行 insertPlainText 会让 QPlainTextEdit 重排到卡死，
+    // 这里每 120ms 批量插一次。
+    const QList<QByteArray> lines = m_logcatTail.split('\n');
+    m_logcatTail = lines.last();
+    QStringList ready;
+    ready.reserve(lines.size());
+    for (int i = 0; i < lines.size() - 1; ++i)
+        ready << QString::fromUtf8(lines[i]);
+    if (m_logDropped > 0) {
+        ready.prepend(QStringLiteral("[logcat] 忽略 %1 段（刷新跟不上）").arg(m_logDropped));
+        m_logDropped = 0;
+    }
+    m_panels->appendLogLines(ready);
+}
+
+void MainWindow::onLogcatStop() {
+    QProcess *proc = m_logcat;
+    m_logcat = nullptr;
+    if (proc) {
+        proc->disconnect(this);
+        proc->kill();
+        proc->waitForFinished(1000);
+        proc->deleteLater();
+    }
+    if (m_logFlush)
+        m_logFlush->stop();
+    flushLogcat();
+    m_panels->setLogcatRunning(false);
+    m_panels->appendLog(QStringLiteral("[logcat] 已停止"));
+    qInfo() << "[logcat] stopped";
+}
+

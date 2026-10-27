@@ -30,6 +30,7 @@ public:
 
     bool isRunning() const;
     bool isEmbedded() const { return m_child != nullptr; }
+    HWND childHandle() const { return m_child; }
 
 signals:
     void runningChanged(bool running);
