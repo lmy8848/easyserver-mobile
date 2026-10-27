@@ -18,6 +18,7 @@ qt_add_executable(devboard-qt
     src/ScrcpyProcess.cpp src/ScrcpyProcess.h
     src/Panels.cpp src/Panels.h
     src/PairDialog.cpp src/PairDialog.h
+    src/AppLog.cpp src/AppLog.h
 )
 
 target_link_libraries(devboard-qt PRIVATE Qt6::Widgets)

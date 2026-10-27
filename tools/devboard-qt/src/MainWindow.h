@@ -40,12 +40,28 @@ private slots:
     void onLogcatStart();
     void onLogcatStop();
     void flushLogcat();
+    void onScreenshot();
+    void onRecord(int seconds);
+    void onCancelRecord();
+    void onChooseCaptureDir();
+    void onOpenCaptureDir();
+    void onOpenCaptureFile(const QString &path);
 
 private:
     void buildUi();
     void applyDarkTheme();
     QString currentSerial() const;
     bool currentOnline() const;
+
+    QString ensureCaptureDir();
+    void reportCapture(const QString &label, const QString &path, bool ok,
+                       const QString &detail = QString());
+    void captureViaDeviceFile(const QString &serial, const QString &localPath,
+                              const QString &prevErr);
+    void pullRecord(const QString &serial, const QString &remote, const QString &local,
+                    bool cancelled);
+    void probeRecord();
+    void finishRecord();
 
     AdbClient *m_adb = nullptr;
     ScrcpyProcess *m_scrcpy = nullptr;
@@ -67,4 +83,20 @@ private:
     QByteArray m_logcatTail;
     QTimer *m_logFlush = nullptr;
     int m_logDropped = 0;
+
+    // 截图 / 录屏
+    QString m_captureDirPath;
+    // 录屏走设备端后台进程（nohup），停止时发 SIGINT 让 screenrecord 正常写 moov，
+    // 避免直接 kill 留下无法播放的 MP4
+    QString m_recordSerial;
+    QString m_recordRemote;
+    QString m_recordLocal;
+    QString m_recordPidFile;
+    QProcess *m_recordProbe = nullptr;
+    bool m_recordStopping = false;
+    bool m_recordCancelled = false;
+    QTimer *m_recordTick = nullptr;
+    int m_recordRemain = 0;
+    int m_recordTicks = 0;
+    int m_recordSeconds = 0;
 };

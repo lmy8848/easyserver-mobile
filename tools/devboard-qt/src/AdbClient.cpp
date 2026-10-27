@@ -61,8 +61,10 @@ void AdbClient::refreshDevices() {
         const QString out = QString::fromUtf8(proc->readAllStandardOutput());
         const QString err = QString::fromUtf8(proc->readAllStandardError());
         m_refreshInFlight = false;
-        if (code != 0 && !err.trimmed().isEmpty())
+        if (code != 0 && !err.trimmed().isEmpty()) {
+            qWarning() << "[adb] devices failed rc=" << code << err.trimmed();
             emit errorOccurred(err.trimmed());
+        }
         parseDevices(out);
         proc->deleteLater();
     });
@@ -129,8 +131,8 @@ void AdbClient::pair(const QString &hostPort, const QString &code) {
     env.insert(QStringLiteral("MSYS_NO_PATHCONV"), QStringLiteral("1"));
     proc->setProcessEnvironment(env);
     connect(proc, &QProcess::finished, this, [this, proc, hostPort](int rc, QProcess::ExitStatus) {
-        const QString out = QString::fromLocal8Bit(proc->readAllStandardOutput()).trimmed();
-        QString err = QString::fromLocal8Bit(proc->readAllStandardError()).trimmed();
+        const QString out = QString::fromUtf8(proc->readAllStandardOutput()).trimmed();
+        QString err = QString::fromUtf8(proc->readAllStandardError()).trimmed();
         const bool ok = rc == 0 && out.contains(QStringLiteral("Successfully paired"), Qt::CaseInsensitive);
         QString msg = ok ? QStringLiteral("配对成功") : (err.isEmpty() ? out : err);
         if (msg.isEmpty())
@@ -153,8 +155,8 @@ void AdbClient::connectDevice(const QString &hostPort) {
     env.insert(QStringLiteral("MSYS_NO_PATHCONV"), QStringLiteral("1"));
     proc->setProcessEnvironment(env);
     connect(proc, &QProcess::finished, this, [this, proc](int rc, QProcess::ExitStatus) {
-        const QString out = QString::fromLocal8Bit(proc->readAllStandardOutput()).trimmed();
-        const QString err = QString::fromLocal8Bit(proc->readAllStandardError()).trimmed();
+        const QString out = QString::fromUtf8(proc->readAllStandardOutput()).trimmed();
+        const QString err = QString::fromUtf8(proc->readAllStandardError()).trimmed();
         qInfo() << "[adb] connect" << "rc=" << rc << "out=" << out << "err=" << err;
         if (rc == 0 && out.contains(QStringLiteral("connected"), Qt::CaseInsensitive)) {
             refreshDevices();
@@ -183,8 +185,8 @@ void AdbClient::scanMdns() {
     env.insert(QStringLiteral("MSYS_NO_PATHCONV"), QStringLiteral("1"));
     proc->setProcessEnvironment(env);
     connect(proc, &QProcess::finished, this, [this, proc](int rc, QProcess::ExitStatus) {
-        QString out = QString::fromLocal8Bit(proc->readAllStandardOutput());
-        QString err = QString::fromLocal8Bit(proc->readAllStandardError());
+        QString out = QString::fromUtf8(proc->readAllStandardOutput());
+        QString err = QString::fromUtf8(proc->readAllStandardError());
         if (out.trimmed().isEmpty())
             out = err;
         QStringList services;

@@ -2,7 +2,16 @@
 
 #include <QApplication>
 #include <QComboBox>
+#include <QDateTime>
+#include <QDesktopServices>
+#include <QDir>
+#include <QFile>
 #include <QFileDialog>
+#include <QFileInfo>
+#include <QSettings>
+#include <QSharedPointer>
+#include <QStandardPaths>
+#include <QUrl>
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QKeyEvent>
@@ -21,6 +30,7 @@
 #include <QVBoxLayout>
 #include <QWheelEvent>
 
+#include "AppLog.h"
 #include "Panels.h"
 #include "PairDialog.h"
 #include "ScrcpyProcess.h"
@@ -31,6 +41,10 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
 
     buildUi();
     applyDarkTheme();
+
+    // 应用层全局日志实时进「应用日志」面板（同时落盘到 AppData）
+    if (AppLog::instance())
+        connect(AppLog::instance(), &AppLog::lineWritten, m_panels, &Panels::appendAppLog);
 
     connect(m_adb, &AdbClient::devicesChanged, this, &MainWindow::onDevicesChanged);
     connect(m_adb, &AdbClient::errorOccurred, this, [this](const QString &e) {
@@ -199,17 +213,51 @@ void MainWindow::buildUi() {
     // ---- 面板信号 ----
     connect(m_panels, &Panels::shellCommandEntered, this, &MainWindow::onShellCommand);
     connect(m_panels, &Panels::refreshInfoRequested, this, &MainWindow::onRefreshInfo);
-    connect(m_panels, &Panels::screenshotRequested, this, [this]() {
-        const QString serial = currentSerial();
-        if (!serial.isEmpty())
-            m_adb->shell(serial, QStringLiteral(
-                "screencap -p /sdcard/devboard_shot.png && echo '已保存 /sdcard/devboard_shot.png'"));
+    connect(m_panels, &Panels::screenshotRequested, this, &MainWindow::onScreenshot);
+    connect(m_panels, &Panels::recordRequested, this, &MainWindow::onRecord);
+    connect(m_panels, &Panels::cancelRecordRequested, this, &MainWindow::onCancelRecord);
+    connect(m_panels, &Panels::chooseCaptureDirRequested, this, &MainWindow::onChooseCaptureDir);
+    connect(m_panels, &Panels::openCaptureDirRequested, this, &MainWindow::onOpenCaptureDir);
+    connect(m_panels, &Panels::openCaptureFileRequested, this, &MainWindow::onOpenCaptureFile);
+    connect(m_panels, &Panels::openLogDirRequested, this, [this]() {
+        QDir().mkpath(AppLog::logDir());
+        QDesktopServices::openUrl(QUrl::fromLocalFile(AppLog::logDir()));
     });
-    connect(m_panels, &Panels::recordRequested, this, [this]() {
-        const QString serial = currentSerial();
-        if (!serial.isEmpty())
-            m_adb->shell(serial, QStringLiteral(
-                "screenrecord --time-limit 30 /sdcard/devboard_record.mp4 & echo '录屏开始（30s）'"));
+
+    // 截图/录屏保存目录：默认 图片/DevBoard，可在操作页更改并记住
+    m_captureDirPath = QSettings().value(QStringLiteral("paths/captureDir")).toString();
+    if (m_captureDirPath.isEmpty()) {
+        QString base = QStandardPaths::writableLocation(QStandardPaths::PicturesLocation);
+        if (base.isEmpty())
+            base = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
+        if (base.isEmpty())
+            base = QDir::homePath();
+        m_captureDirPath = base + QStringLiteral("/DevBoard");
+    }
+    m_panels->setCaptureDir(m_captureDirPath);
+
+    m_recordTick = new QTimer(this);
+    m_recordTick->setInterval(1000);
+    connect(m_recordTick, &QTimer::timeout, this, [this]() {
+        ++m_recordTicks;
+        if (m_recordRemain > 0)
+            --m_recordRemain;
+        if (m_recordStopping) {
+            m_status->setText(QStringLiteral("正在停止录屏…"));
+        } else if (m_recordRemain > 0) {
+            m_status->setText(QStringLiteral("录制中… 剩余 %1 秒（再点「停止录屏」提前结束）")
+                                  .arg(m_recordRemain));
+        } else {
+            m_status->setText(QStringLiteral("录制已达时长上限，正在收尾…"));
+        }
+        // 设备端 screenrecord 退出即录制结束（自然到点或被 SIGINT 停止）
+        probeRecord();
+        // 兜底：远超时长仍在跑，强制收尾，避免按钮卡在「停止录屏」
+        if (m_recordTicks > m_recordSeconds + 15) {
+            qWarning() << "[record] watchdog timeout, forcing stop";
+            m_recordCancelled = true;
+            finishRecord();
+        }
     });
     connect(m_panels, &Panels::listPackagesRequested, this, [this]() {
         const QString serial = currentSerial();
@@ -259,15 +307,28 @@ void MainWindow::buildUi() {
         sc->setContext(Qt::WindowShortcut);
         connect(sc, &QShortcut::activated, this, fn);
     };
-    addShortcut("F5", [this]() {
+    addShortcut("F5", [this]() { m_panels->setCurrentIndex(4); });
+    addShortcut("F6", [this]() {
         if (m_logcat)
             onLogcatStop();
         else
             onLogcatStart();
     });
-    addShortcut("F6", [this]() { m_panels->clearLog(); });
-    addShortcut("F7", [this]() { m_panels->refreshInfoRequested(); });
-    addShortcut("F8", [this]() { m_panels->listPackagesRequested(); });
+    addShortcut("F7", [this]() { m_panels->clearLog(); });
+    addShortcut("F8", [this]() { m_panels->refreshInfoRequested(); });
+    addShortcut("F9", [this]() { m_panels->listPackagesRequested(); });
+    addShortcut("F1", [this]() { m_panels->setCurrentIndex(0); });
+    addShortcut("F2", [this]() { m_panels->setCurrentIndex(1); });
+    addShortcut("F3", [this]() { m_panels->setCurrentIndex(2); });
+    addShortcut("F4", [this]() { m_panels->setCurrentIndex(3); });
+    addShortcut("F10", [this]() { onScreenshot(); });
+    addShortcut("F11", [this]() {
+        if (m_recordTick->isActive())
+            onCancelRecord();
+        else
+            onRecord(30);
+    });
+    addShortcut("F12", [this]() { onOpenCaptureDir(); });
     connect(m_panels, &Panels::uninstallPackageRequested, this, [this](const QString &pkg) {
         const QString serial = currentSerial();
         if (!serial.isEmpty())
@@ -300,6 +361,8 @@ void MainWindow::applyDarkTheme() {
 }
 
 void MainWindow::onDevicesChanged(const QList<AdbClient::Device> &devices) {
+    static int lastCount = -1;
+    static bool lastOnline = false;
     m_devices = devices;
     const QString prev = m_deviceBox->currentData().toString();
     m_deviceBox->clear();
@@ -316,6 +379,11 @@ void MainWindow::onDevicesChanged(const QList<AdbClient::Device> &devices) {
         m_deviceBox->setCurrentIndex(prevIndex);
 
     const bool online = currentOnline();
+    if (devices.size() != lastCount || online != lastOnline) {
+        qInfo() << "[adb] devices:" << devices.size() << "online serial:" << currentSerial();
+        lastCount = devices.size();
+        lastOnline = online;
+    }
     m_deviceState->setText(devices.isEmpty() ? QStringLiteral("无设备")
                                              : (online ? QStringLiteral("● 在线") : QStringLiteral("○ 离线")));
     m_connectBtn->setEnabled(online && !m_scrcpy->isRunning());
@@ -342,10 +410,12 @@ void MainWindow::onConnectClicked() {
     const QString serial = currentSerial();
     if (serial.isEmpty()) {
         m_status->setText(QStringLiteral("没有可用设备"));
+        qWarning() << "[mirror] connect ignored: no device";
         return;
     }
     if (!currentOnline()) {
         m_status->setText(QStringLiteral("设备离线：%1").arg(serial));
+        qWarning() << "[mirror] connect ignored: offline" << serial;
         return;
     }
     connectSerial(serial);
@@ -354,6 +424,7 @@ void MainWindow::onConnectClicked() {
 void MainWindow::connectSerial(const QString &serial) {
     if (serial.isEmpty())
         return;
+    qInfo() << "[mirror] connect requested" << serial;
     m_serial = serial;
     m_retries = 0;
     m_panels->appendShell(QStringLiteral("[连接] ") + serial);
@@ -362,6 +433,7 @@ void MainWindow::connectSerial(const QString &serial) {
 
 void MainWindow::onDisconnectClicked() {
     // 手动断开：停重连，避免刚断开又被拉起来
+    qInfo() << "[mirror] disconnect by user" << m_serial;
     m_serial.clear();
     m_retries = 0;
     if (m_autoReconnect)
@@ -375,6 +447,7 @@ void MainWindow::onShellCommand(const QString &cmd) {
         m_panels->appendShell(QStringLiteral("[错误] 未选择设备"));
         return;
     }
+    qInfo() << "[adb] shell" << cmd;
     m_adb->shell(serial, cmd);
 }
 
@@ -410,6 +483,7 @@ void MainWindow::onRefreshInfo() {
             [this, proc](int rc, QProcess::ExitStatus) {
                 const QString raw = QString::fromUtf8(proc->readAllStandardOutput());
                 if (rc != 0) {
+                    qWarning() << "[info] read failed rc=" << rc << raw;
                     m_panels->setInfo(QStringLiteral("读取失败（rc=%1）\n%2").arg(rc).arg(raw));
                     m_status->setText(QStringLiteral("设备信息读取失败"));
                     proc->deleteLater();
@@ -455,6 +529,8 @@ void MainWindow::onRefreshInfo() {
                 m_status->setText(QStringLiteral("设备信息已刷新：%1 %2 · 电量 %3")
                                       .arg(kv.value(QStringLiteral("brand")),
                                            kv.value(QStringLiteral("model")), battery));
+                qInfo() << "[info] refreshed" << kv.value(QStringLiteral("brand"))
+                        << kv.value(QStringLiteral("model")) << "battery" << battery;
                 proc->deleteLater();
             });
     connect(proc, &QProcess::errorOccurred, this, [this, proc](QProcess::ProcessError e) {
@@ -594,5 +670,314 @@ void MainWindow::onLogcatStop() {
     m_panels->setLogcatRunning(false);
     m_panels->appendLog(QStringLiteral("[logcat] 已停止"));
     qInfo() << "[logcat] stopped";
+}
+
+// ---- 截图 / 录屏 ----
+
+QString MainWindow::ensureCaptureDir() {
+    if (!QDir().mkpath(m_captureDirPath)) {
+        const QString native = QDir::toNativeSeparators(m_captureDirPath);
+        m_panels->appendCapture(QStringLiteral("无法创建保存目录：") + native, QString(), false);
+        m_status->setText(QStringLiteral("✗ 无法创建保存目录：%1").arg(native));
+        return QString();
+    }
+    return m_captureDirPath;
+}
+
+void MainWindow::reportCapture(const QString &label, const QString &path, bool ok,
+                               const QString &detail) {
+    m_panels->appendCapture(label, path, ok);
+    if (ok) {
+        const QString dir = QDir::toNativeSeparators(m_captureDirPath);
+        QString extra;
+        if (!detail.isEmpty())
+            extra = QStringLiteral("（") + detail + QLatin1Char(')');
+        m_status->setText(
+            QStringLiteral("✓ %1 已保存到 %2%3").arg(QFileInfo(path).fileName(), dir, extra));
+        qInfo() << "[capture] saved" << path;
+    } else {
+        m_status->setText(QStringLiteral("✗ %1").arg(label));
+        qWarning() << "[capture] failed" << label << detail;
+    }
+}
+
+void MainWindow::onScreenshot() {
+    const QString serial = currentSerial();
+    if (serial.isEmpty()) {
+        reportCapture(QStringLiteral("截图失败：未选择设备"), QString(), false);
+        return;
+    }
+    if (!currentOnline()) {
+        reportCapture(QStringLiteral("截图失败：设备离线"), QString(), false);
+        return;
+    }
+    const QString dir = ensureCaptureDir();
+    if (dir.isEmpty())
+        return;
+
+    const QString stamp = QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-HHmmss"));
+    const QString path = dir + QStringLiteral("/devboard-shot-") + stamp + QStringLiteral(".png");
+
+    // exec-out 直接把 PNG 送到 stdout，省一次设备端落盘与 pull
+    auto *proc = new QProcess(this);
+    auto buf = QSharedPointer<QByteArray>::create();
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    env.insert(QStringLiteral("MSYS_NO_PATHCONV"), QStringLiteral("1"));
+    proc->setProcessEnvironment(env);
+    connect(proc, &QProcess::readyReadStandardOutput, this,
+            [proc, buf]() { buf->append(proc->readAllStandardOutput()); });
+    connect(proc, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
+            [this, proc, buf, path, serial](int rc, QProcess::ExitStatus st) {
+                const QByteArray pngMagic = QByteArray::fromHex("89504e47");
+                const bool ok = st == QProcess::NormalExit && rc == 0 && buf->size() > 1024
+                                && buf->startsWith(pngMagic);
+                QString err = QString::fromUtf8(proc->readAllStandardError()).trimmed();
+                proc->deleteLater();
+                if (ok) {
+                    QFile f(path);
+                    if (f.open(QIODevice::WriteOnly) && f.write(*buf) == buf->size()) {
+                        f.close();
+                        reportCapture(QStringLiteral("截图 %1").arg(QFileInfo(path).fileName()),
+                                      path, true);
+                    } else {
+                        reportCapture(QStringLiteral("截图失败：写入本地文件失败"), QString(), false);
+                    }
+                    return;
+                }
+                if (err.isEmpty())
+                    err = QStringLiteral("exec-out 返回 %1 字节、rc=%2").arg(buf->size()).arg(rc);
+                // 旧 adb 不支持 exec-out 时回退到设备文件 + pull
+                captureViaDeviceFile(serial, path, err);
+            });
+    proc->start(m_adb->adbPath(), {QStringLiteral("-s"), serial, QStringLiteral("exec-out"),
+                                   QStringLiteral("screencap"), QStringLiteral("-p")});
+    m_status->setText(QStringLiteral("正在截图…"));
+}
+
+void MainWindow::captureViaDeviceFile(const QString &serial, const QString &localPath,
+                                      const QString &prevErr) {
+    const QString remote = QStringLiteral("/sdcard/devboard-shot-tmp.png");
+    auto *shot = new QProcess(this);
+    connect(shot, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
+            [this, shot, serial, remote, localPath, prevErr](int rc, QProcess::ExitStatus) {
+                shot->deleteLater();
+                if (rc != 0) {
+                    reportCapture(QStringLiteral("截图失败：%1").arg(prevErr), QString(), false);
+                    return;
+                }
+                auto *pull = new QProcess(this);
+                connect(pull, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
+                        [this, pull, serial, remote, localPath](int, QProcess::ExitStatus) {
+                            pull->deleteLater();
+                            QProcess::startDetached(m_adb->adbPath(),
+                                                    {QStringLiteral("-s"), serial,
+                                                     QStringLiteral("shell"), QStringLiteral("rm"),
+                                                     QStringLiteral("-f"), remote});
+                            if (QFileInfo(localPath).size() > 1024) {
+                                reportCapture(
+                                    QStringLiteral("截图 %1").arg(QFileInfo(localPath).fileName()),
+                                    localPath, true);
+                            } else {
+                                reportCapture(QStringLiteral("截图失败：未能取回图片"), QString(),
+                                              false);
+                            }
+                        });
+                pull->start(m_adb->adbPath(), {QStringLiteral("-s"), serial, QStringLiteral("pull"),
+                                               remote, localPath});
+            });
+    shot->start(m_adb->adbPath(), {QStringLiteral("-s"), serial, QStringLiteral("shell"),
+                                   QStringLiteral("screencap"), QStringLiteral("-p"), remote});
+}
+
+void MainWindow::onRecord(int seconds) {
+    if (m_recordTick->isActive()) {
+        onCancelRecord();
+        return;
+    }
+    const QString serial = currentSerial();
+    if (serial.isEmpty()) {
+        reportCapture(QStringLiteral("录屏失败：未选择设备"), QString(), false);
+        return;
+    }
+    if (!currentOnline()) {
+        reportCapture(QStringLiteral("录屏失败：设备离线"), QString(), false);
+        return;
+    }
+    const QString dir = ensureCaptureDir();
+    if (dir.isEmpty())
+        return;
+
+    const QString stamp = QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-HHmmss"));
+    const QString remote = QStringLiteral("/sdcard/devboard-rec-") + stamp + QStringLiteral(".mp4");
+    const QString local = dir + QStringLiteral("/devboard-rec-") + stamp + QStringLiteral(".mp4");
+    const QString pidFile = QStringLiteral("/data/local/tmp/devboard_rec.pid");
+
+    m_recordSerial = serial;
+    m_recordRemote = remote;
+    m_recordLocal = local;
+    m_recordPidFile = pidFile;
+    m_recordSeconds = seconds;
+    m_recordRemain = seconds;
+    m_recordTicks = 0;
+    m_recordStopping = false;
+    m_recordCancelled = false;
+
+    // 设备端后台运行：nohup 保证 adb shell 退出后 screenrecord 存活；
+    // 记录 pid 供「停止录屏」发 SIGINT，让 screenrecord 正常写完 moov 索引，
+    // 否则直接 kill 会得到无法播放的 MP4。
+    const QString cmd =
+        QStringLiteral("rm -f %1; nohup screenrecord --time-limit %2 --bit-rate 8000000 %3 "
+                       ">/dev/null 2>&1 & P=$!; echo $P > %1; echo started:$P")
+            .arg(pidFile, QString::number(seconds), remote);
+
+    auto *proc = new QProcess(this);
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    env.insert(QStringLiteral("MSYS_NO_PATHCONV"), QStringLiteral("1"));
+    proc->setProcessEnvironment(env);
+    connect(proc, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
+            [this, proc](int rc, QProcess::ExitStatus) {
+                const QString out = QString::fromUtf8(proc->readAllStandardOutput()).trimmed();
+                const QString err = QString::fromUtf8(proc->readAllStandardError()).trimmed();
+                proc->deleteLater();
+                if (!out.contains(QStringLiteral("started:"))) {
+                    qWarning() << "[record] start failed rc=" << rc << out << err;
+                    m_recordTick->stop();
+                    m_panels->setRecording(false);
+                    m_recordSerial.clear();
+                    m_recordRemote.clear();
+                    m_recordLocal.clear();
+                    m_recordPidFile.clear();
+                    m_recordStopping = false;
+                    reportCapture(QStringLiteral("录屏失败：设备端 screenrecord 未能启动"), QString(),
+                                  false, err.isEmpty() ? out : err);
+                    return;
+                }
+                qInfo() << "[record] started" << out << "->" << m_recordRemote;
+                m_status->setText(QStringLiteral("录制中… 剩余 %1 秒（再点「停止录屏」提前结束）")
+                                      .arg(m_recordRemain));
+            });
+    proc->start(m_adb->adbPath(), {QStringLiteral("-s"), serial, QStringLiteral("shell"), cmd});
+
+    m_panels->setRecording(true);
+    m_recordTick->start();
+    m_status->setText(QStringLiteral("正在启动录屏…"));
+}
+
+void MainWindow::onCancelRecord() {
+    if (!m_recordTick->isActive() || m_recordPidFile.isEmpty())
+        return;
+    if (m_recordStopping)
+        return;
+    m_recordStopping = true;
+    m_recordCancelled = true;
+    qInfo() << "[record] stopping via SIGINT";
+    auto *p = new QProcess(this);
+    connect(p, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
+            [p](int, QProcess::ExitStatus) { p->deleteLater(); });
+    p->start(m_adb->adbPath(),
+             {QStringLiteral("-s"), m_recordSerial, QStringLiteral("shell"),
+              QStringLiteral("kill -INT $(cat %1) 2>/dev/null; echo done").arg(m_recordPidFile)});
+    m_status->setText(QStringLiteral("正在停止录屏…"));
+}
+
+void MainWindow::probeRecord() {
+    if (m_recordProbe || m_recordPidFile.isEmpty())
+        return;
+    auto *p = new QProcess(this);
+    m_recordProbe = p;
+    const QString cmd =
+        QStringLiteral("[ -r %1 ] && { kill -0 $(cat %1) 2>/dev/null && echo alive || echo gone; } "
+                       "|| echo gone")
+            .arg(m_recordPidFile);
+    connect(p, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
+            [this, p](int, QProcess::ExitStatus) {
+                const QString out = QString::fromUtf8(p->readAllStandardOutput()).trimmed();
+                p->deleteLater();
+                if (m_recordProbe == p)
+                    m_recordProbe = nullptr;
+                if (out.contains(QStringLiteral("gone")))
+                    finishRecord();
+            });
+    p->start(m_adb->adbPath(),
+             {QStringLiteral("-s"), m_recordSerial, QStringLiteral("shell"), cmd});
+}
+
+void MainWindow::finishRecord() {
+    if (!m_recordTick->isActive())
+        return;
+    m_recordTick->stop();
+    m_panels->setRecording(false);
+    m_status->setText(QStringLiteral("录屏已结束，正在取回文件…"));
+
+    const QString serial = m_recordSerial;
+    const QString remote = m_recordRemote;
+    const QString local = m_recordLocal;
+    const bool cancelled = m_recordCancelled;
+    m_recordSerial.clear();
+    m_recordRemote.clear();
+    m_recordLocal.clear();
+    m_recordPidFile.clear();
+    m_recordStopping = false;
+    m_recordCancelled = false;
+    m_recordSeconds = 0;
+    m_recordTicks = 0;
+    m_recordRemain = 0;
+
+    // screenrecord 收到 SIGINT 后还要写索引，稍等再 pull
+    QTimer::singleShot(350, this, [this, serial, remote, local, cancelled]() {
+        pullRecord(serial, remote, local, cancelled);
+    });
+}
+
+void MainWindow::pullRecord(const QString &serial, const QString &remote, const QString &local,
+                            bool cancelled) {
+    auto *pull = new QProcess(this);
+    connect(pull, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
+            [this, pull, serial, remote, local, cancelled](int rc, QProcess::ExitStatus) {
+                const QString err = QString::fromUtf8(pull->readAllStandardError()).trimmed();
+                pull->deleteLater();
+                QProcess::startDetached(m_adb->adbPath(),
+                                        {QStringLiteral("-s"), serial, QStringLiteral("shell"),
+                                         QStringLiteral("rm"), QStringLiteral("-f"), remote});
+                const qint64 size = QFileInfo(local).size();
+                if (rc == 0 && size > 1024) {
+                    const QString detail =
+                        cancelled ? QStringLiteral("提前停止，已正常收尾")
+                                  : QStringLiteral("%1 MB").arg(size / 1024.0 / 1024.0, 0, 'f', 1);
+                    qInfo() << "[record] saved" << local << size << "bytes";
+                    reportCapture(QStringLiteral("录屏 %1").arg(QFileInfo(local).fileName()), local,
+                                  true, detail);
+                } else {
+                    qWarning() << "[record] pull failed rc=" << rc << size << err;
+                    reportCapture(QStringLiteral("录屏失败：未能取回视频"), QString(), false, err);
+                }
+            });
+    pull->start(m_adb->adbPath(),
+                {QStringLiteral("-s"), serial, QStringLiteral("pull"), remote, local});
+}
+
+void MainWindow::onChooseCaptureDir() {
+    const QString dir = QFileDialog::getExistingDirectory(
+        this, QStringLiteral("选择截图与录屏的保存目录"), m_captureDirPath);
+    if (dir.isEmpty())
+        return;
+    m_captureDirPath = dir;
+    QSettings().setValue(QStringLiteral("paths/captureDir"), dir);
+    m_panels->setCaptureDir(dir);
+    m_status->setText(QStringLiteral("保存目录已改为 %1").arg(QDir::toNativeSeparators(dir)));
+}
+
+void MainWindow::onOpenCaptureDir() {
+    if (ensureCaptureDir().isEmpty())
+        return;
+    QDesktopServices::openUrl(QUrl::fromLocalFile(m_captureDirPath));
+}
+
+void MainWindow::onOpenCaptureFile(const QString &path) {
+    if (!QFileInfo::exists(path)) {
+        m_status->setText(QStringLiteral("✗ 文件已不存在：%1").arg(QDir::toNativeSeparators(path)));
+        return;
+    }
+    QDesktopServices::openUrl(QUrl::fromLocalFile(path));
 }
 
