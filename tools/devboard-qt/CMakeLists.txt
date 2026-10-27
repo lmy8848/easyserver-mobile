@@ -18,6 +18,8 @@ qt_add_executable(devboard-qt
     src/ScrcpyProcess.cpp src/ScrcpyProcess.h
     src/Panels.cpp src/Panels.h
     src/PairDialog.cpp src/PairDialog.h
+    src/Settings.cpp src/Settings.h
+    src/SettingsDialog.cpp src/SettingsDialog.h
     src/AppLog.cpp src/AppLog.h
 )
 

@@ -1,6 +1,7 @@
 #include "MainWindow.h"
 
 #include <QApplication>
+#include <QCloseEvent>
 #include <QComboBox>
 #include <QDateTime>
 #include <QDesktopServices>
@@ -34,6 +35,8 @@
 #include "Panels.h"
 #include "PairDialog.h"
 #include "ScrcpyProcess.h"
+#include "Settings.h"
+#include "SettingsDialog.h"
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     m_adb = new AdbClient(this);
@@ -69,28 +72,50 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
             m_retries = 0;
     });
 
-    // 非主动停止（无线 adb 掉线、scrcpy 崩溃）时自动重连，3s 一次、最多 6 次
+    // 非主动停止（无线 adb 掉线、scrcpy 崩溃）时自动重连，次数/间隔由设置决定
     m_autoReconnect = new QTimer(this);
     m_autoReconnect->setSingleShot(true);
-    m_autoReconnect->setInterval(3000);
+    m_autoReconnect->setInterval(Settings::instance().conn().reconnectDelaySec * 1000);
     connect(m_autoReconnect, &QTimer::timeout, this, [this]() {
         if (m_serial.isEmpty())
             return;
-        if (m_retries >= 6) {
-            m_status->setText(QStringLiteral("自动重连已暂停（6 次失败）· 检查手机后点「连接镜像」"));
+        const ConnOptions c = Settings::instance().conn();
+        if (c.reconnectMax <= 0) {
+            m_status->setText(QStringLiteral("镜像已断开（自动重连已关闭）"));
+            return;
+        }
+        // 设备不在线时反复启动 scrcpy 只会白白耗掉重试预算，改为等它恢复
+        if (!isSerialOnline(m_serial)) {
+            m_status->setText(QStringLiteral("设备离线，等待恢复…"));
+            qInfo() << "[reconnect] wait offline" << m_serial;
+            m_autoReconnect->start();
+            return;
+        }
+        if (m_retries >= c.reconnectMax) {
+            m_status->setText(QStringLiteral("自动重连已暂停（%1 次失败）· 检查手机后点「连接镜像」")
+                                  .arg(c.reconnectMax));
             return;
         }
         ++m_retries;
         m_status->setText(QStringLiteral("重连中…（第 %1 次）").arg(m_retries));
         qInfo() << "[reconnect] attempt" << m_retries << m_serial;
         m_adb->refreshDevices();
-        m_scrcpy->start(m_serial, 720, 60);
+        m_scrcpy->start(m_serial);
     });
     connect(m_scrcpy, &ScrcpyProcess::exitedUnexpectedly, this, [this](int code) {
         if (m_serial.isEmpty())
             return;
+        const ConnOptions c = Settings::instance().conn();
+        if (c.reconnectMax <= 0) {
+            m_panels->appendShell(
+                QStringLiteral("[scrcpy] 意外退出 code=%1（自动重连已关闭）").arg(code));
+            m_status->setText(QStringLiteral("镜像断开（code=%1）").arg(code));
+            return;
+        }
         m_panels->appendShell(QStringLiteral("[scrcpy] 意外退出 code=%1，将自动重连").arg(code));
-        m_status->setText(QStringLiteral("镜像断开（code=%1），3 秒后重连").arg(code));
+        m_status->setText(QStringLiteral("镜像断开（code=%1），%2 秒后重连")
+                              .arg(code)
+                              .arg(c.reconnectDelaySec));
         m_autoReconnect->start();
     });
     connect(m_scrcpy, &ScrcpyProcess::errorOccurred, this, [this](const QString &e) {
@@ -105,6 +130,18 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     poll->start();
     onRefreshClicked();
 
+    // 恢复上次窗口几何：此前每次启动位置都漂移，自动化点击和多屏切换都受影响。
+    // 只恢复几何，不恢复工具条状态——工具条布局是固定的（设备栏 + 按键栏两行），
+    // restoreState 会把按键栏拉回同一行并盖住右侧面板。
+    const QByteArray geo = Settings::instance().windowGeometry();
+    if (!geo.isEmpty())
+        restoreGeometry(geo);
+
+    // 自动连上次设备：先记下来，等设备列表确认在线后再连（直接启动会撞上 adb 未就绪）
+    const ConnOptions connOpt = Settings::instance().conn();
+    if (connOpt.autoConnectLast && !connOpt.lastSerial.isEmpty())
+        m_pendingSerial = connOpt.lastSerial;
+
     qInfo() << "[main] MainWindow built";
 }
 
@@ -113,12 +150,26 @@ MainWindow::~MainWindow() {
         m_scrcpy->stop();
 }
 
+void MainWindow::closeEvent(QCloseEvent *event) {
+    Settings::instance().setWindowGeometry(saveGeometry());
+    if (m_recordTick->isActive()) {
+        // 关闭时别把设备端 screenrecord 留成孤儿进程
+        QProcess::startDetached(m_adb->adbPath(),
+                                {QStringLiteral("-s"), m_recordSerial, QStringLiteral("shell"),
+                                 QStringLiteral("kill -INT $(cat %1) 2>/dev/null; rm -f %2")
+                                     .arg(m_recordPidFile, m_recordRemote)});
+        qInfo() << "[record] cancelled on app close";
+    }
+    QMainWindow::closeEvent(event);
+}
+
 void MainWindow::buildUi() {
     setWindowTitle(QStringLiteral("DevBoard"));
     resize(1440, 900);
 
     // ---- 顶部工具条 ----
     auto *bar = addToolBar(QStringLiteral("设备"));
+    bar->setObjectName(QStringLiteral("deviceBar")); // saveState/restoreState 需要
     bar->setMovable(false);
     bar->setIconSize(QSize(16, 16));
 
@@ -181,6 +232,37 @@ void MainWindow::buildUi() {
     });
     bar->addWidget(pairBtn);
 
+    bar->addSeparator();
+    auto *settingsBtn = new QPushButton(QStringLiteral("设置"), this);
+    settingsBtn->setToolTip(QStringLiteral("镜像参数、连接、路径与界面（Ctrl+,）"));
+    connect(settingsBtn, &QPushButton::clicked, this, &MainWindow::onSettings);
+    bar->addWidget(settingsBtn);
+
+    // ---- 按键栏：镜像区被 scrcpy 子窗口占据，导航键在这里补 ----
+    // 另起一行，避免和上面的设备栏挤在一起被窗口边缘裁掉
+    addToolBarBreak();
+    auto *keyBar = addToolBar(QStringLiteral("按键"));
+    keyBar->setObjectName(QStringLiteral("keyBar"));
+    keyBar->setMovable(false);
+    auto addKey = [this, keyBar](const QString &label, int keycode) {
+        auto *b = new QPushButton(label, this);
+        b->setFixedWidth(64);
+        b->setToolTip(QStringLiteral("input keyevent %1").arg(keycode));
+        connect(b, &QPushButton::clicked, this, [this, keycode]() { sendKey(keycode); });
+        keyBar->addWidget(b);
+    };
+    addKey(QStringLiteral("返回"), 4);
+    addKey(QStringLiteral("主页"), 3);
+    addKey(QStringLiteral("多任务"), 187);
+    addKey(QStringLiteral("音量-"), 25);
+    addKey(QStringLiteral("音量+"), 24);
+    addKey(QStringLiteral("电源"), 26);
+    auto *rotBtn = new QPushButton(QStringLiteral("旋转"), this);
+    rotBtn->setFixedWidth(64);
+    rotBtn->setToolTip(QStringLiteral("切换屏幕方向 0°/90°/180°/270°"));
+    connect(rotBtn, &QPushButton::clicked, this, &MainWindow::rotateScreen);
+    keyBar->addWidget(rotBtn);
+
     // ---- 中央：左镜像 + 右面板 ----
     auto *split = new QSplitter(Qt::Horizontal, this);
 
@@ -199,8 +281,11 @@ void MainWindow::buildUi() {
     m_panels = new Panels(split);
     split->addWidget(m_mirrorHost);
     split->addWidget(m_panels);
-    split->setStretchFactor(0, 3);
-    split->setStretchFactor(1, 2);
+    // 镜像区默认窄一些：手机竖直画面是 9:20，宽了只会多两侧黑边；
+    // 多余宽度留给右侧功能面板，用户仍可拖动分隔条。
+    split->setStretchFactor(0, 0);
+    split->setStretchFactor(1, 1);
+    split->setSizes({440, 860});
     setCentralWidget(split);
 
     m_scrcpy->setHost(m_mirrorHost);
@@ -224,16 +309,8 @@ void MainWindow::buildUi() {
         QDesktopServices::openUrl(QUrl::fromLocalFile(AppLog::logDir()));
     });
 
-    // 截图/录屏保存目录：默认 图片/DevBoard，可在操作页更改并记住
-    m_captureDirPath = QSettings().value(QStringLiteral("paths/captureDir")).toString();
-    if (m_captureDirPath.isEmpty()) {
-        QString base = QStandardPaths::writableLocation(QStandardPaths::PicturesLocation);
-        if (base.isEmpty())
-            base = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
-        if (base.isEmpty())
-            base = QDir::homePath();
-        m_captureDirPath = base + QStringLiteral("/DevBoard");
-    }
+    // 截图/录屏保存目录：统一由 Settings 管理（默认 图片/DevBoard，可在设置或操作页改）
+    m_captureDirPath = Settings::instance().captureDir();
     m_panels->setCaptureDir(m_captureDirPath);
 
     m_recordTick = new QTimer(this);
@@ -260,7 +337,7 @@ void MainWindow::buildUi() {
         }
     });
     connect(m_panels, &Panels::listPackagesRequested, this, [this]() {
-        const QString serial = currentSerial();
+        const QString serial = activeSerial();
         if (serial.isEmpty())
             return;
         auto *p = new QProcess(this);
@@ -284,7 +361,7 @@ void MainWindow::buildUi() {
                   QStringLiteral("list"), QStringLiteral("packages"), QStringLiteral("-3")});
     });
     connect(m_panels, &Panels::installApkRequested, this, [this]() {
-        const QString serial = currentSerial();
+        const QString serial = activeSerial();
         if (serial.isEmpty())
             return;
         const QString path = QFileDialog::getOpenFileName(
@@ -329,16 +406,18 @@ void MainWindow::buildUi() {
             onRecord(30);
     });
     addShortcut("F12", [this]() { onOpenCaptureDir(); });
+    addShortcut("Ctrl+,", [this]() { onSettings(); });
     connect(m_panels, &Panels::uninstallPackageRequested, this, [this](const QString &pkg) {
-        const QString serial = currentSerial();
+        const QString serial = activeSerial();
         if (!serial.isEmpty())
             m_adb->shell(serial, QStringLiteral("pm uninstall --user 0 %1").arg(pkg));
     });
 }
 
 void MainWindow::applyDarkTheme() {
+    const int fontPx = Settings::instance().ui().fontSize;
     qApp->setStyleSheet(QStringLiteral(R"(
-        QMainWindow, QWidget { background: #14161c; color: #e5e7eb; font-size: 13px; }
+        QMainWindow, QWidget { background: #14161c; color: #e5e7eb; font-size: %1px; }
         QToolBar { background: #1b1e26; border-bottom: 1px solid #2a2f3a; spacing: 6px; padding: 4px; }
         QLabel { background: transparent; }
         QPushButton { background: #232833; border: 1px solid #333a47; border-radius: 6px; padding: 5px 12px; }
@@ -357,7 +436,31 @@ void MainWindow::applyDarkTheme() {
         QStatusBar { background: #1b1e26; border-top: 1px solid #2a2f3a; color: #9ca3af; }
         QSplitter::handle { background: #2a2f3a; width: 3px; }
         QCheckBox { background: transparent; }
-    )"));
+    )").arg(fontPx));
+}
+
+void MainWindow::onSettings() {
+    SettingsDialog dlg(this);
+    if (dlg.exec() != QDialog::Accepted)
+        return;
+    applySettings();
+    m_status->setText(QStringLiteral("设置已保存（镜像参数在下次连接时生效）"));
+}
+
+void MainWindow::applySettings() {
+    applyDarkTheme();
+    m_adb->reloadPath();
+    m_scrcpy->reloadExePath();
+    const ConnOptions c = Settings::instance().conn();
+    if (m_autoReconnect)
+        m_autoReconnect->setInterval(c.reconnectDelaySec * 1000);
+    m_captureDirPath = Settings::instance().captureDir();
+    m_panels->setCaptureDir(m_captureDirPath);
+    qInfo() << "[settings] applied"
+            << "font=" << Settings::instance().ui().fontSize
+            << "followResize=" << Settings::instance().ui().followResize
+            << "captureDir=" << m_captureDirPath << "reconnect=" << c.reconnectMax << "x"
+            << c.reconnectDelaySec << "s";
 }
 
 void MainWindow::onDevicesChanged(const QList<AdbClient::Device> &devices) {
@@ -389,14 +492,33 @@ void MainWindow::onDevicesChanged(const QList<AdbClient::Device> &devices) {
     m_connectBtn->setEnabled(online && !m_scrcpy->isRunning());
     if (m_status->text().isEmpty())
         m_status->setText(QStringLiteral("在线设备 %1 台").arg(devices.size()));
+
+    // 启动时恢复了「上次设备」，等它真的在线再连
+    if (!m_pendingSerial.isEmpty()) {
+        if (m_scrcpy->isRunning()) {
+            m_pendingSerial.clear();
+        } else if (isSerialOnline(m_pendingSerial)) {
+            const QString target = m_pendingSerial;
+            m_pendingSerial.clear();
+            qInfo() << "[mirror] auto connect last device" << target;
+            connectSerial(target);
+        }
+    }
 }
 
 QString MainWindow::currentSerial() const {
     return m_deviceBox->currentData().toString();
 }
 
-bool MainWindow::currentOnline() const {
-    const QString serial = currentSerial();
+QString MainWindow::activeSerial() const {
+    // 镜像中的设备优先：终端/logcat/截图/录屏应与正在看的画面一致，
+    // 而不是跟着下拉框走（切换下拉框不会断开镜像）。
+    if (!m_serial.isEmpty())
+        return m_serial;
+    return currentSerial();
+}
+
+bool MainWindow::isSerialOnline(const QString &serial) const {
     for (const auto &d : m_devices) {
         if (d.serial == serial)
             return d.state == QStringLiteral("device");
@@ -404,7 +526,37 @@ bool MainWindow::currentOnline() const {
     return false;
 }
 
+bool MainWindow::currentOnline() const {
+    return isSerialOnline(currentSerial());
+}
+
 void MainWindow::onRefreshClicked() { m_adb->refreshDevices(); }
+
+void MainWindow::sendKey(int keycode) {
+    const QString serial = activeSerial();
+    if (serial.isEmpty() || !isSerialOnline(serial)) {
+        m_status->setText(QStringLiteral("没有在线设备"));
+        return;
+    }
+    qInfo() << "[key] keyevent" << keycode << serial;
+    m_adb->shell(serial, QStringLiteral("input keyevent %1").arg(keycode));
+}
+
+void MainWindow::rotateScreen() {
+    const QString serial = activeSerial();
+    if (serial.isEmpty() || !isSerialOnline(serial)) {
+        m_status->setText(QStringLiteral("没有在线设备"));
+        return;
+    }
+    // 关掉自动旋转再指定方向，否则系统会立刻转回去
+    m_rotation = (m_rotation + 1) % 4;
+    qInfo() << "[key] rotate" << m_rotation << serial;
+    m_adb->shell(serial,
+                 QStringLiteral("settings put system accelerometer_rotation 0; "
+                                "settings put system user_rotation %1")
+                     .arg(m_rotation));
+    m_status->setText(QStringLiteral("屏幕方向已切换为 %1°").arg(m_rotation * 90));
+}
 
 void MainWindow::onConnectClicked() {
     const QString serial = currentSerial();
@@ -427,8 +579,13 @@ void MainWindow::connectSerial(const QString &serial) {
     qInfo() << "[mirror] connect requested" << serial;
     m_serial = serial;
     m_retries = 0;
+    m_pendingSerial.clear();
+    // 记住上次连接的设备，下次启动可自动连
+    ConnOptions c = Settings::instance().conn();
+    c.lastSerial = serial;
+    Settings::instance().setConn(c);
     m_panels->appendShell(QStringLiteral("[连接] ") + serial);
-    m_scrcpy->start(serial, 720, 60);
+    m_scrcpy->start(serial);
 }
 
 void MainWindow::onDisconnectClicked() {
@@ -436,13 +593,14 @@ void MainWindow::onDisconnectClicked() {
     qInfo() << "[mirror] disconnect by user" << m_serial;
     m_serial.clear();
     m_retries = 0;
+    m_pendingSerial.clear();
     if (m_autoReconnect)
         m_autoReconnect->stop();
     m_scrcpy->stop();
 }
 
 void MainWindow::onShellCommand(const QString &cmd) {
-    const QString serial = currentSerial();
+    const QString serial = activeSerial();
     if (serial.isEmpty()) {
         m_panels->appendShell(QStringLiteral("[错误] 未选择设备"));
         return;
@@ -452,7 +610,7 @@ void MainWindow::onShellCommand(const QString &cmd) {
 }
 
 void MainWindow::onRefreshInfo() {
-    const QString serial = currentSerial();
+    const QString serial = activeSerial();
     if (serial.isEmpty()) {
         m_status->setText(QStringLiteral("未选择设备"));
         return;
@@ -523,7 +681,7 @@ void MainWindow::onRefreshInfo() {
                     QStringLiteral("电量        %1").arg(battery),
                     QStringLiteral("序列号      %1").arg(kv.value(QStringLiteral("serialno"))),
                     QStringLiteral("运行时长    %1").arg(kv.value(QStringLiteral("uptime"))),
-                    QStringLiteral("连接        %1").arg(currentSerial()),
+                    QStringLiteral("连接        %1").arg(activeSerial()),
                 };
                 m_panels->setInfo(rows.join(QLatin1Char('\n')));
                 m_status->setText(QStringLiteral("设备信息已刷新：%1 %2 · 电量 %3")
@@ -544,6 +702,24 @@ void MainWindow::onRefreshInfo() {
 }
 
 bool MainWindow::eventFilter(QObject *watched, QEvent *event) {
+    // 宿主尺寸变化时同步内嵌的 scrcpy 子窗口（否则拖分隔条/最大化会裁切或留黑）。
+    // 防抖 150ms：拖动过程中会连续触发 Resize。
+    if (watched == m_mirrorHost && event->type() == QEvent::Resize && m_scrcpy->isRunning()
+        && Settings::instance().ui().followResize) {
+        if (!m_resizeDebounce) {
+            m_resizeDebounce = new QTimer(this);
+            m_resizeDebounce->setSingleShot(true);
+            m_resizeDebounce->setInterval(150);
+            connect(m_resizeDebounce, &QTimer::timeout, this, [this]() {
+                if (m_mirrorHost && m_scrcpy) {
+                    qInfo() << "[mirror] resize follow" << m_mirrorHost->size();
+                    m_scrcpy->resizeEmbedded(m_mirrorHost->width(), m_mirrorHost->height());
+                }
+            });
+        }
+        m_resizeDebounce->start();
+    }
+
     if (!m_scrcpy || !m_scrcpy->isRunning())
         return QMainWindow::eventFilter(watched, event);
     HWND child = m_scrcpy->childHandle();
@@ -585,7 +761,7 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event) {
 }
 
 void MainWindow::onLogcatStart() {
-    const QString serial = currentSerial();
+    const QString serial = activeSerial();
     if (serial.isEmpty() || !currentOnline()) {
         m_panels->appendLog(QStringLiteral("[错误] 没有在线设备"));
         return;
@@ -610,8 +786,9 @@ void MainWindow::onLogcatStart() {
     QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
     env.insert(QStringLiteral("MSYS_NO_PATHCONV"), QStringLiteral("1"));
     proc->setProcessEnvironment(env);
-    connect(proc, &QProcess::readyReadStandardOutput, this, [this]() {
-        m_logcatTail.append(m_logcat->readAllStandardOutput());
+    connect(proc, &QProcess::readyReadStandardOutput, this, [this, proc]() {
+        // 用捕获的 proc 而非成员 m_logcat：切换实例时成员可能已被替换
+        m_logcatTail.append(proc->readAllStandardOutput());
         // 背压：UI 写入跟不上时丢弃最旧的一半，避免缓冲无限增长
         if (m_logcatTail.size() > (1 << 20)) {
             m_logcatTail = m_logcatTail.right(512 * 1024);
@@ -702,7 +879,7 @@ void MainWindow::reportCapture(const QString &label, const QString &path, bool o
 }
 
 void MainWindow::onScreenshot() {
-    const QString serial = currentSerial();
+    const QString serial = activeSerial();
     if (serial.isEmpty()) {
         reportCapture(QStringLiteral("截图失败：未选择设备"), QString(), false);
         return;
@@ -756,7 +933,10 @@ void MainWindow::onScreenshot() {
 
 void MainWindow::captureViaDeviceFile(const QString &serial, const QString &localPath,
                                       const QString &prevErr) {
-    const QString remote = QStringLiteral("/sdcard/devboard-shot-tmp.png");
+    // 临时文件名带时间戳：并发/连续截图不会互相覆盖
+    const QString remote = QStringLiteral("/sdcard/devboard-shot-%1.png")
+                               .arg(QDateTime::currentDateTime().toString(
+                                   QStringLiteral("yyyyMMddHHmmsszzz")));
     auto *shot = new QProcess(this);
     connect(shot, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
             [this, shot, serial, remote, localPath, prevErr](int rc, QProcess::ExitStatus) {
@@ -794,7 +974,7 @@ void MainWindow::onRecord(int seconds) {
         onCancelRecord();
         return;
     }
-    const QString serial = currentSerial();
+    const QString serial = activeSerial();
     if (serial.isEmpty()) {
         reportCapture(QStringLiteral("录屏失败：未选择设备"), QString(), false);
         return;
@@ -962,7 +1142,8 @@ void MainWindow::onChooseCaptureDir() {
     if (dir.isEmpty())
         return;
     m_captureDirPath = dir;
-    QSettings().setValue(QStringLiteral("paths/captureDir"), dir);
+    // 统一走 Settings，操作页与设置对话框共用同一个值
+    Settings::instance().setCaptureDir(dir);
     m_panels->setCaptureDir(dir);
     m_status->setText(QStringLiteral("保存目录已改为 %1").arg(QDir::toNativeSeparators(dir)));
 }

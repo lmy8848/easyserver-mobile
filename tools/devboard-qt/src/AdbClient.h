@@ -22,6 +22,9 @@ public:
     // adb 可执行文件路径（首次探测后缓存）
     QString adbPath() const;
 
+    // 设置里改了 adb.exe 路径后调用，重新探测
+    void reloadPath();
+
     // 刷新设备列表（异步）
     void refreshDevices();
 

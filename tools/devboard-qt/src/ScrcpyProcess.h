@@ -25,8 +25,16 @@ public:
     ~ScrcpyProcess() override;
 
     void setHost(QWidget *host);
-    void start(const QString &serial, int maxSize = 720, int maxFps = 60);
+    // 启动参数由 Settings 决定（分辨率/帧率/码率/保持唤醒/关屏）
+    void start(const QString &serial);
     void stop();
+
+    // 设置里改了 scrcpy.exe 路径后调用，重新探测
+    void reloadExePath();
+    QString exePath() const { return m_exePath; }
+
+    // 宿主尺寸变化时同步子窗口（SDL 会收到 resize 并重建交换链）
+    void resizeEmbedded(int width, int height);
 
     bool isRunning() const;
     bool isEmbedded() const { return m_child != nullptr; }

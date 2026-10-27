@@ -11,11 +11,12 @@ class QTabWidget;
 class QPushButton;
 class QWidget;
 class QProcess;
+class QCloseEvent;
 
 class ScrcpyProcess;
 class Panels;
 
-// 主窗口：顶部设备栏 + 左侧镜像宿主 + 右侧面板 + 状态栏
+// 主窗口：顶部设备栏 + 按键栏 + 左侧镜像宿主 + 右侧面板 + 状态栏
 class MainWindow : public QMainWindow {
     Q_OBJECT
 public:
@@ -29,12 +30,14 @@ protected:
     // 镜像区由 scrcpy 子窗口占据，Qt 收不到那里的鼠标/键盘焦点；
     // 在应用级拦截键盘与滚轮，转发给 scrcpy 窗口。
     bool eventFilter(QObject *watched, QEvent *event) override;
+    void closeEvent(QCloseEvent *event) override;
 
 private slots:
     void onDevicesChanged(const QList<AdbClient::Device> &devices);
     void onConnectClicked();
     void onDisconnectClicked();
     void onRefreshClicked();
+    void onSettings();
     void onShellCommand(const QString &cmd);
     void onRefreshInfo();
     void onLogcatStart();
@@ -50,8 +53,13 @@ private slots:
 private:
     void buildUi();
     void applyDarkTheme();
+    void applySettings();
     QString currentSerial() const;
+    QString activeSerial() const;
+    bool isSerialOnline(const QString &serial) const;
     bool currentOnline() const;
+    void sendKey(int keycode);
+    void rotateScreen();
 
     QString ensureCaptureDir();
     void reportCapture(const QString &label, const QString &path, bool ok,
@@ -77,7 +85,11 @@ private:
     QList<AdbClient::Device> m_devices;
     QTimer *m_autoReconnect = nullptr;
     QString m_serial;
+    // 启动时从设置恢复、等设备上线后再连的目标
+    QString m_pendingSerial;
     int m_retries = 0;
+    int m_rotation = 0;
+    QTimer *m_resizeDebounce = nullptr;
 
     QProcess *m_logcat = nullptr;
     QByteArray m_logcatTail;

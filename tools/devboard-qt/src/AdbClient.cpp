@@ -8,19 +8,27 @@
 #include <QRegularExpression>
 #include <QStandardPaths>
 
+#include "Settings.h"
+
 AdbClient::AdbClient(QObject *parent) : QObject(parent) {
     m_adbPath = locateAdb();
     qInfo() << "[adb] path=" << m_adbPath;
 }
 
-// 探测顺序：环境变量 DEVBOARD_ADB → 仓库内 third_party/scrcpy-win64 下的 adb → PATH
+// 探测顺序：设置里显式指定 → DEVBOARD_ADB → 仓库内 third_party/scrcpy-win64 下的 adb
+// → 仓库根 adb.exe → PATH
 QString AdbClient::locateAdb() {
+    const QString configured = Settings::instance().adbPath();
+    if (!configured.isEmpty() && QFileInfo(configured).isExecutable())
+        return configured;
+
     const QString env = QProcessEnvironment::systemEnvironment().value(QStringLiteral("DEVBOARD_ADB"));
     if (!env.isEmpty() && QFileInfo(env).isExecutable())
         return env;
 
     // 从可执行文件向上回溯，找 third_party/scrcpy-win64/*/adb.exe
     QDir dir(QCoreApplication::applicationDirPath());
+    const QDir startDir = dir;
     for (int i = 0; i < 8; ++i) {
         QDir candidates = dir.absoluteFilePath(QStringLiteral("third_party/scrcpy-win64"));
         if (candidates.exists()) {
@@ -34,7 +42,8 @@ QString AdbClient::locateAdb() {
             break;
     }
 
-    // 仓库根也可能持有 scrcpy-win64（开发机摆放差异）
+    // 仓库根也可能持有 adb.exe：必须从可执行目录重新上溯（上一个循环的 dir 已走到根）
+    dir = startDir;
     for (int i = 0; i < 8; ++i) {
         const QString exe = dir.absoluteFilePath(QStringLiteral("adb.exe"));
         if (QFileInfo::exists(exe))
@@ -44,6 +53,11 @@ QString AdbClient::locateAdb() {
     }
 
     return QStringLiteral("adb"); // 交给 PATH
+}
+
+void AdbClient::reloadPath() {
+    m_adbPath = locateAdb();
+    qInfo() << "[adb] path=" << m_adbPath;
 }
 
 QString AdbClient::adbPath() const { return m_adbPath; }

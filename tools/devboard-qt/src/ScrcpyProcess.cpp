@@ -8,6 +8,8 @@
 #include <QTimer>
 #include <QWidget>
 
+#include "Settings.h"
+
 static const wchar_t *kWindowTitle = L"DevBoard Mirror";
 
 ScrcpyProcess::ScrcpyProcess(QObject *parent) : QObject(parent) {
@@ -16,12 +18,21 @@ ScrcpyProcess::ScrcpyProcess(QObject *parent) : QObject(parent) {
     qInfo() << "[scrcpy] exe=" << m_exePath;
 }
 
+void ScrcpyProcess::reloadExePath() {
+    m_exePath = locateScrcpy();
+    qInfo() << "[scrcpy] exe=" << m_exePath;
+}
+
 ScrcpyProcess::~ScrcpyProcess() { stop(); }
 
 void ScrcpyProcess::setHost(QWidget *host) { m_host = host; }
 
-// 探测顺序：DEVBOARD_SCRCPY → 仓库内 third_party/scrcpy-win64/*/scrcpy.exe
+// 探测顺序：设置里显式指定 → DEVBOARD_SCRCPY → 仓库内 third_party/scrcpy-win64/*/scrcpy.exe
 QString ScrcpyProcess::locateScrcpy() {
+    const QString configured = Settings::instance().scrcpyPath();
+    if (!configured.isEmpty() && QFileInfo(configured).isExecutable())
+        return configured;
+
     const QString env = QProcessEnvironment::systemEnvironment().value(QStringLiteral("DEVBOARD_SCRCPY"));
     if (!env.isEmpty() && QFileInfo(env).isExecutable())
         return env;
@@ -46,7 +57,7 @@ bool ScrcpyProcess::isRunning() const {
     return m_proc && m_proc->state() != QProcess::NotRunning;
 }
 
-void ScrcpyProcess::start(const QString &serial, int maxSize, int maxFps) {
+void ScrcpyProcess::start(const QString &serial) {
     if (isRunning()) {
         emit statusText(QStringLiteral("镜像已在运行"));
         return;
@@ -59,8 +70,11 @@ void ScrcpyProcess::start(const QString &serial, int maxSize, int maxFps) {
     }
     if (m_exePath.isEmpty() || (m_exePath != QStringLiteral("scrcpy") && !QFileInfo::exists(m_exePath))) {
         emit errorOccurred(QStringLiteral("找不到 scrcpy.exe，已探测：%1").arg(m_exePath));
+        emit runningChanged(false);
         return;
     }
+
+    const MirrorOptions opt = Settings::instance().mirror();
 
     // 窗口尺寸直接用宿主尺寸：嵌入时 MoveWindow 与启动尺寸一致，
     // SDL 不会收到 resize（resize 会重建交换链导致重影/黑屏）。
@@ -71,21 +85,26 @@ void ScrcpyProcess::start(const QString &serial, int maxSize, int maxFps) {
         h = m_host->height();
     }
 
-    QStringList args{
-        QStringLiteral("-s"), serial,
-        QStringLiteral("--max-size=%1").arg(maxSize),
-        QStringLiteral("--max-fps=%1").arg(maxFps),
-        QStringLiteral("--stay-awake"),
-        QStringLiteral("--no-audio"),
-        QStringLiteral("--window-borderless"),
-        // 先在屏幕外创建：scrcpy 的窗口是独立顶层窗口，嵌入完成前会单独露出来，
-        // 放到屏幕外等嵌入时再 MoveWindow 进宿主，用户就只看到主窗口。
-        QStringLiteral("--window-x=-32000"),
-        QStringLiteral("--window-y=-32000"),
-        QStringLiteral("--window-title=%1").arg(m_title),
-        QStringLiteral("--window-width=%1").arg(w),
-        QStringLiteral("--window-height=%1").arg(h),
-    };
+    QStringList args{QStringLiteral("-s"), serial};
+    if (opt.maxSize > 0)
+        args << QStringLiteral("--max-size=%1").arg(opt.maxSize);
+    if (opt.maxFps > 0)
+        args << QStringLiteral("--max-fps=%1").arg(opt.maxFps);
+    if (opt.bitRateMbps > 0)
+        args << QStringLiteral("--video-bit-rate=%1M").arg(opt.bitRateMbps);
+    if (opt.stayAwake)
+        args << QStringLiteral("--stay-awake");
+    if (opt.turnScreenOff)
+        args << QStringLiteral("--turn-screen-off");
+    args << QStringLiteral("--no-audio")
+         << QStringLiteral("--window-borderless")
+         // 先在屏幕外创建：scrcpy 的窗口是独立顶层窗口，嵌入完成前会单独露出来，
+         // 放到屏幕外等嵌入时再 MoveWindow 进宿主，用户就只看到主窗口。
+         << QStringLiteral("--window-x=-32000")
+         << QStringLiteral("--window-y=-32000")
+         << QStringLiteral("--window-title=%1").arg(m_title)
+         << QStringLiteral("--window-width=%1").arg(w)
+         << QStringLiteral("--window-height=%1").arg(h);
 
     m_proc = new QProcess(this);
     QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
@@ -120,6 +139,9 @@ void ScrcpyProcess::start(const QString &serial, int maxSize, int maxFps) {
     });
 
     qInfo() << "[scrcpy] starting:" << m_exePath << args.join(QLatin1Char(' '));
+    qInfo() << "[scrcpy] mirror options:" << "maxSize=" << opt.maxSize << "maxFps=" << opt.maxFps
+            << "bitRate=" << opt.bitRateMbps << "stayAwake=" << opt.stayAwake
+            << "turnScreenOff=" << opt.turnScreenOff;
     m_proc->start(m_exePath, args);
 
     if (!m_pollTimer) {
@@ -197,6 +219,17 @@ void ScrcpyProcess::embedWindow(HWND hwnd) {
     m_child = hwnd;
     qInfo() << "[scrcpy] embedded hwnd=" << (quintptr)hwnd << "size=" << QSize(w, h);
     emit statusText(QStringLiteral("镜像已嵌入"));
+}
+
+void ScrcpyProcess::resizeEmbedded(int width, int height) {
+    if (!m_child || width <= 0 || height <= 0)
+        return;
+    RECT cur{};
+    GetWindowRect(m_child, &cur);
+    if (cur.right - cur.left == width && cur.bottom - cur.top == height)
+        return; // 尺寸没变就不动，避免无意义的 SDL resize
+    qInfo() << "[scrcpy] resize embedded" << QSize(width, height);
+    MoveWindow(m_child, 0, 0, width, height, TRUE);
 }
 
 void ScrcpyProcess::stop() {

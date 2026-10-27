@@ -302,20 +302,28 @@ void Panels::appendLogLines(const QStringList &lines) {
     QString batch;
     batch.reserve(8192);
     int taken = 0;
+    auto flushBatch = [this, &batch]() {
+        if (batch.isEmpty())
+            return;
+        QTextCursor cur = m_logOut->textCursor();
+        cur.movePosition(QTextCursor::End);
+        m_logOut->setTextCursor(cur);
+        m_logOut->insertPlainText(batch);
+        batch.clear();
+    };
     for (const QString &line : lines) {
         if (!filter.isEmpty() && !line.contains(filter))
             continue;
         batch += line;
         batch += QLatin1Char('\n');
-        if (++taken >= 300)
-            break;
+        // 每 300 行插入一次：单次插入过多会让排版明显变慢；
+        // 分批插完不丢行（控件本身只保留最后 2000 行）。
+        if (++taken >= 300) {
+            flushBatch();
+            taken = 0;
+        }
     }
-    if (batch.isEmpty())
-        return;
-    QTextCursor cur = m_logOut->textCursor();
-    cur.movePosition(QTextCursor::End);
-    m_logOut->setTextCursor(cur);
-    m_logOut->insertPlainText(batch);
+    flushBatch();
 }
 
 void Panels::clearLog() { m_logOut->clear(); }
