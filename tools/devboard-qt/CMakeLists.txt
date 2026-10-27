@@ -21,6 +21,10 @@ qt_add_executable(devboard-qt
 
 target_link_libraries(devboard-qt PRIVATE Qt6::Widgets)
 
+# 显式 GUI 子系统：否则 exe 启动时会带一个黑色控制台窗口（用户看到"两个窗口"）。
+# 诊断信息仍由 main.cpp 的消息处理器写日志文件。
+set_target_properties(devboard-qt PROPERTIES WIN32_EXECUTABLE TRUE)
+
 # Windows 头文件需要（避免 min/max 宏、隐藏控制台）
 target_compile_definitions(devboard-qt PRIVATE NOMINMAX)
 

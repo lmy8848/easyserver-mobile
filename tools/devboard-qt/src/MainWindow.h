@@ -22,6 +22,9 @@ public:
     explicit MainWindow(QWidget *parent = nullptr);
     ~MainWindow() override;
 
+    // 直接连接指定 serial（--serial 启动参数用）
+    void connectSerial(const QString &serial);
+
 protected:
     // 镜像区由 scrcpy 子窗口占据，Qt 收不到那里的鼠标/键盘焦点；
     // 在应用级拦截键盘与滚轮，转发给 scrcpy 窗口。

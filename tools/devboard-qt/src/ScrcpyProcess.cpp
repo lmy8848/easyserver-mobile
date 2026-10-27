@@ -72,6 +72,10 @@ void ScrcpyProcess::start(const QString &serial, int maxSize, int maxFps) {
         QStringLiteral("--stay-awake"),
         QStringLiteral("--no-audio"),
         QStringLiteral("--window-borderless"),
+        // 先在屏幕外创建：scrcpy 的窗口是独立顶层窗口，嵌入完成前会单独露出来，
+        // 放到屏幕外等嵌入时再 MoveWindow 进宿主，用户就只看到主窗口。
+        QStringLiteral("--window-x=-32000"),
+        QStringLiteral("--window-y=-32000"),
         QStringLiteral("--window-title=%1").arg(m_title),
         QStringLiteral("--window-width=%1").arg(w),
         QStringLiteral("--window-height=%1").arg(h),
@@ -111,7 +115,7 @@ void ScrcpyProcess::start(const QString &serial, int maxSize, int maxFps) {
 
     if (!m_pollTimer) {
         m_pollTimer = new QTimer(this);
-        m_pollTimer->setInterval(400);
+        m_pollTimer->setInterval(100);
         connect(m_pollTimer, &QTimer::timeout, this, &ScrcpyProcess::pollForWindow);
     }
     m_pollTimer->start();
@@ -161,6 +165,13 @@ void ScrcpyProcess::embedWindow(HWND hwnd) {
         emit errorOccurred(QStringLiteral("宿主窗口未设置，无法嵌入"));
         return;
     }
+
+    ShowWindow(hwnd, SW_HIDE);
+
+    // 子窗口不该出现在任务栏里；嵌入期间保持隐藏
+    LONG exStyle = GetWindowLongW(hwnd, GWL_EXSTYLE);
+    exStyle = (exStyle | WS_EX_TOOLWINDOW) & ~WS_EX_APPWINDOW;
+    SetWindowLongW(hwnd, GWL_EXSTYLE, exStyle);
 
     // 去弹窗/标题栏/边框，改成子窗口样式后 SetParent
     LONG style = GetWindowLongW(hwnd, GWL_STYLE);

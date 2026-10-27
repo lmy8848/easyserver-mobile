@@ -284,6 +284,12 @@ void MainWindow::onConnectClicked() {
         m_status->setText(QStringLiteral("设备离线：%1").arg(serial));
         return;
     }
+    connectSerial(serial);
+}
+
+void MainWindow::connectSerial(const QString &serial) {
+    if (serial.isEmpty())
+        return;
     m_panels->appendShell(QStringLiteral("[连接] ") + serial);
     m_scrcpy->start(serial, 720, 60);
 }
