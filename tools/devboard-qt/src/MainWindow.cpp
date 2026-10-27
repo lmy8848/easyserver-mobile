@@ -805,19 +805,9 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event) {
         return true;
     }
 
-    // 滚轮：鼠标不在右侧面板内时转发，手势滚动由 scrcpy 注入手机。
-    if (type == QEvent::Wheel) {
-        auto *we = static_cast<QWheelEvent *>(event);
-        QWidget *under = QApplication::widgetAt(we->globalPosition().toPoint());
-        if (under && m_panels->isAncestorOf(under))
-            return QMainWindow::eventFilter(watched, event);
-        const int delta = we->angleDelta().y();
-        if (delta == 0)
-            return QMainWindow::eventFilter(watched, event);
-        const QPoint gp = we->globalPosition().toPoint();
-        PostMessageW(child, WM_MOUSEWHEEL, MAKEWPARAM(0, delta), MAKELPARAM(gp.x(), gp.y()));
-        return true;
-    }
+    // 滚轮不能在这里转发：光标在镜像子窗口上时 Windows 已经把 WM_MOUSEWHEEL 发给该窗口，
+    // SDL 不处理时会气泡给父窗口（本程序），再 PostMessage 回去就会形成滚轮风暴。
+    // 子窗口自己处理滚轮并注入手机，Qt 侧只放行、不拦截。
 
     return QMainWindow::eventFilter(watched, event);
 }

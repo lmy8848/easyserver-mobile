@@ -67,4 +67,9 @@ private:
     QString m_exePath;
     QString m_title;
     bool m_userStopped = false;
+    // 日志去重：scrcpy 在控制通道拥塞时会连续打印同一条 WARN，
+    // 不合并会把应用日志和 UI 拖死
+    QString m_lastLogLine;
+    qint64 m_lastLogMs = 0;
+    int m_repeatCount = 0;
 };

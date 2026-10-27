@@ -1,6 +1,7 @@
 #include "ScrcpyProcess.h"
 
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QDir>
 #include <QFileInfo>
 #include <QProcess>
@@ -168,6 +169,19 @@ void ScrcpyProcess::consumeLog(QByteArray &buf, const QByteArray &chunk) {
         buf.remove(0, idx + 1);
         if (line.isEmpty())
             continue;
+        // 相同行 1 秒内只输出一次：控制通道拥塞时 scrcpy 会成百上千次打印同一条 WARN，
+        // 逐行写盘并推给 UI 会让界面卡死
+        const qint64 now = QDateTime::currentMSecsSinceEpoch();
+        if (line == m_lastLogLine && now - m_lastLogMs < 1000) {
+            ++m_repeatCount;
+            continue;
+        }
+        if (m_repeatCount > 0) {
+            qDebug().noquote() << "[scrcpy]" << QStringLiteral("（上一条重复 %1 次）").arg(m_repeatCount);
+            m_repeatCount = 0;
+        }
+        m_lastLogLine = line;
+        m_lastLogMs = now;
         qDebug().noquote() << "[scrcpy]" << line;
 
         const auto sz = sizeRe.match(line);

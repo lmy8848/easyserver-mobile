@@ -32,6 +32,7 @@
 | B12 | 退出不清理录屏 | 仅 `closeEvent` 保存几何 | 关闭时若在录屏，向设备端发 `kill -INT` 并删除远程临时文件 |
 | B13 | 截图回退文件重名 | 固定 `/sdcard/devboard-shot-tmp.png` | 改为带毫秒时间戳的文件名 |
 | B14 | 工具条 `saveState` 警告 | 工具条未设 `objectName` | 两行工具条都设 `objectName`（`deviceBar` / `keyBar`），且不再 `restoreState`：布局固定，恢复旧状态会把按键栏拉回同一行并盖住右侧面板 |
+| B15 | 鼠标滚轮卡死 | `eventFilter` 把 Qt 滚轮事件用 `PostMessage(WM_MOUSEWHEEL)` 回贴给镜像子窗口；SDL 不处理时 `DefWindowProc` 又把它气泡回父窗口，形成闭环，每秒产生数百次注入；scrcpy 控制队列（上限 60）被灌满后每丢一条打一条 WARN，应用日志约 700 行/秒写盘并推 UI | 删除滚轮转发：光标在子窗口上时 Windows 已直接把 `WM_MOUSEWHEEL` 投递给它，Qt 只放行不拦截；`consumeLog` 对相同行 1 秒内去重（只输出一行 + 重复计数） |
 
 ## 3. 本次新增
 
@@ -55,3 +56,21 @@
 1. 拆分 `MainWindow`：`CaptureController`（截图/录屏）、`LogcatController`、`DeviceActions`，`MainWindow` 只做装配与布局。
 2. 引入 Qt Test 覆盖 `Settings` 默认值与 `AdbClient` 的 `devices -l` 解析。
 3. 镜像区宽高比自适应：目前 scrcpy 按窗口等比 letterbox，窗口过宽会有黑边，可考虑按视频比例限制宿主宽度。
+
+## 6. 实测：嵌入版 vs 独立 scrcpy（M2012K11C，无线 adb）
+
+同参数（`--max-size=1080 --max-fps=60 --video-bit-rate=32M --no-audio --stay-awake`，编码输出 488x1080）、同窗口尺寸、同一段脚本滑动负载（设备端连续 `input swipe` 约 26 秒）：
+
+| 指标 | 独立 scrcpy | 嵌入版 |
+| --- | --- | --- |
+| `--print-fps` | 51–58，掉帧时 34–45（skipped 10 次） | 56–60，掉帧时 40–45（skipped 13 次） |
+| scrcpy CPU（18 秒负载） | 1.57 s | 1.52 s |
+| 壳进程（devboard-qt） | — | 空闲约 0.6 s／12 秒；滚轮风暴修复前可达 4 s+／12 秒 |
+
+结论：嵌入本身不劣化帧率与 CPU。主观「不如 scrcpy 流畅」主要来自三点：
+
+1. 滚轮风暴（B15，已修）：在镜像上滚动会让整机卡死，这是最直接的体感差异。
+2. 镜像面板把 488x1080 视频等比缩到约 317x702（面板 440 宽 + letterbox），画面比独立窗口小且经过缩放。
+3. 设备端 `input swipe/input tap` 每次都要拉起一个 Java 进程，抢 CPU 时两边都会掉帧（`N fps (+M frames skipped)`），不是壳层问题。
+
+若仍要压缩延迟：可把镜像区做成可全屏/收起右侧面板，让视频按原始比例铺满；或把设置里的分辨率上限调到「原始」减少缩放层级。
