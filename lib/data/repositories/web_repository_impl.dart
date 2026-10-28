@@ -48,6 +48,12 @@ class WebRepositoryImpl implements WebRepository {
   }
 
   @override
+  Future<WebConfigTest> testConfig(int serverId) async {
+    final json = await _api.get('/web-servers/$serverId/test-config');
+    return WebConfigTest.fromJson(json);
+  }
+
+  @override
   Future<void> createWebsite(int serverId, CreateWebsiteInput input) async {
     await _api.post('/web-servers/$serverId/websites', data: input.toJson());
   }

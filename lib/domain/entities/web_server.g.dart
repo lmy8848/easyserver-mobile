@@ -20,7 +20,6 @@ _$WebServerImpl _$$WebServerImplFromJson(Map<String, dynamic> json) =>
       memoryBytes: (json['memory_bytes'] as num?)?.toInt() ?? 0,
       uptime: json['uptime'] as String? ?? '',
       autoStart: json['auto_start'] as bool? ?? false,
-      configOk: json['config_ok'] as bool? ?? false,
     );
 
 Map<String, dynamic> _$$WebServerImplToJson(_$WebServerImpl instance) =>
@@ -37,7 +36,18 @@ Map<String, dynamic> _$$WebServerImplToJson(_$WebServerImpl instance) =>
       'memory_bytes': instance.memoryBytes,
       'uptime': instance.uptime,
       'auto_start': instance.autoStart,
-      'config_ok': instance.configOk,
+    };
+
+_$WebConfigTestImpl _$$WebConfigTestImplFromJson(Map<String, dynamic> json) =>
+    _$WebConfigTestImpl(
+      valid: json['valid'] as bool? ?? false,
+      message: json['message'] as String? ?? '',
+    );
+
+Map<String, dynamic> _$$WebConfigTestImplToJson(_$WebConfigTestImpl instance) =>
+    <String, dynamic>{
+      'valid': instance.valid,
+      'message': instance.message,
     };
 
 _$WebsiteImpl _$$WebsiteImplFromJson(Map<String, dynamic> json) =>

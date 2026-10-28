@@ -37,8 +37,6 @@ mixin _$WebServer {
   String get uptime => throw _privateConstructorUsedError;
   @JsonKey(name: 'auto_start')
   bool get autoStart => throw _privateConstructorUsedError;
-  @JsonKey(name: 'config_ok')
-  bool get configOk => throw _privateConstructorUsedError;
 
   /// Serializes this WebServer to a JSON map.
   Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
@@ -67,8 +65,7 @@ abstract class $WebServerCopyWith<$Res> {
       int pid,
       @JsonKey(name: 'memory_bytes') int memoryBytes,
       String uptime,
-      @JsonKey(name: 'auto_start') bool autoStart,
-      @JsonKey(name: 'config_ok') bool configOk});
+      @JsonKey(name: 'auto_start') bool autoStart});
 }
 
 /// @nodoc
@@ -98,7 +95,6 @@ class _$WebServerCopyWithImpl<$Res, $Val extends WebServer>
     Object? memoryBytes = null,
     Object? uptime = null,
     Object? autoStart = null,
-    Object? configOk = null,
   }) {
     return _then(_value.copyWith(
       id: null == id
@@ -149,10 +145,6 @@ class _$WebServerCopyWithImpl<$Res, $Val extends WebServer>
           ? _value.autoStart
           : autoStart // ignore: cast_nullable_to_non_nullable
               as bool,
-      configOk: null == configOk
-          ? _value.configOk
-          : configOk // ignore: cast_nullable_to_non_nullable
-              as bool,
     ) as $Val);
   }
 }
@@ -177,8 +169,7 @@ abstract class _$$WebServerImplCopyWith<$Res>
       int pid,
       @JsonKey(name: 'memory_bytes') int memoryBytes,
       String uptime,
-      @JsonKey(name: 'auto_start') bool autoStart,
-      @JsonKey(name: 'config_ok') bool configOk});
+      @JsonKey(name: 'auto_start') bool autoStart});
 }
 
 /// @nodoc
@@ -206,7 +197,6 @@ class __$$WebServerImplCopyWithImpl<$Res>
     Object? memoryBytes = null,
     Object? uptime = null,
     Object? autoStart = null,
-    Object? configOk = null,
   }) {
     return _then(_$WebServerImpl(
       id: null == id
@@ -257,10 +247,6 @@ class __$$WebServerImplCopyWithImpl<$Res>
           ? _value.autoStart
           : autoStart // ignore: cast_nullable_to_non_nullable
               as bool,
-      configOk: null == configOk
-          ? _value.configOk
-          : configOk // ignore: cast_nullable_to_non_nullable
-              as bool,
     ));
   }
 }
@@ -280,8 +266,7 @@ class _$WebServerImpl implements _WebServer {
       this.pid = 0,
       @JsonKey(name: 'memory_bytes') this.memoryBytes = 0,
       this.uptime = '',
-      @JsonKey(name: 'auto_start') this.autoStart = false,
-      @JsonKey(name: 'config_ok') this.configOk = false});
+      @JsonKey(name: 'auto_start') this.autoStart = false});
 
   factory _$WebServerImpl.fromJson(Map<String, dynamic> json) =>
       _$$WebServerImplFromJson(json);
@@ -322,13 +307,10 @@ class _$WebServerImpl implements _WebServer {
   @override
   @JsonKey(name: 'auto_start')
   final bool autoStart;
-  @override
-  @JsonKey(name: 'config_ok')
-  final bool configOk;
 
   @override
   String toString() {
-    return 'WebServer(id: $id, name: $name, displayName: $displayName, description: $description, serviceName: $serviceName, defaultPort: $defaultPort, status: $status, version: $version, pid: $pid, memoryBytes: $memoryBytes, uptime: $uptime, autoStart: $autoStart, configOk: $configOk)';
+    return 'WebServer(id: $id, name: $name, displayName: $displayName, description: $description, serviceName: $serviceName, defaultPort: $defaultPort, status: $status, version: $version, pid: $pid, memoryBytes: $memoryBytes, uptime: $uptime, autoStart: $autoStart)';
   }
 
   @override
@@ -353,9 +335,7 @@ class _$WebServerImpl implements _WebServer {
                 other.memoryBytes == memoryBytes) &&
             (identical(other.uptime, uptime) || other.uptime == uptime) &&
             (identical(other.autoStart, autoStart) ||
-                other.autoStart == autoStart) &&
-            (identical(other.configOk, configOk) ||
-                other.configOk == configOk));
+                other.autoStart == autoStart));
   }
 
   @JsonKey(includeFromJson: false, includeToJson: false)
@@ -373,8 +353,7 @@ class _$WebServerImpl implements _WebServer {
       pid,
       memoryBytes,
       uptime,
-      autoStart,
-      configOk);
+      autoStart);
 
   /// Create a copy of WebServer
   /// with the given fields replaced by the non-null parameter values.
@@ -405,8 +384,7 @@ abstract class _WebServer implements WebServer {
       final int pid,
       @JsonKey(name: 'memory_bytes') final int memoryBytes,
       final String uptime,
-      @JsonKey(name: 'auto_start') final bool autoStart,
-      @JsonKey(name: 'config_ok') final bool configOk}) = _$WebServerImpl;
+      @JsonKey(name: 'auto_start') final bool autoStart}) = _$WebServerImpl;
 
   factory _WebServer.fromJson(Map<String, dynamic> json) =
       _$WebServerImpl.fromJson;
@@ -440,15 +418,180 @@ abstract class _WebServer implements WebServer {
   @override
   @JsonKey(name: 'auto_start')
   bool get autoStart;
-  @override
-  @JsonKey(name: 'config_ok')
-  bool get configOk;
 
   /// Create a copy of WebServer
   /// with the given fields replaced by the non-null parameter values.
   @override
   @JsonKey(includeFromJson: false, includeToJson: false)
   _$$WebServerImplCopyWith<_$WebServerImpl> get copyWith =>
+      throw _privateConstructorUsedError;
+}
+
+WebConfigTest _$WebConfigTestFromJson(Map<String, dynamic> json) {
+  return _WebConfigTest.fromJson(json);
+}
+
+/// @nodoc
+mixin _$WebConfigTest {
+  bool get valid => throw _privateConstructorUsedError;
+  String get message => throw _privateConstructorUsedError;
+
+  /// Serializes this WebConfigTest to a JSON map.
+  Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
+
+  /// Create a copy of WebConfigTest
+  /// with the given fields replaced by the non-null parameter values.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  $WebConfigTestCopyWith<WebConfigTest> get copyWith =>
+      throw _privateConstructorUsedError;
+}
+
+/// @nodoc
+abstract class $WebConfigTestCopyWith<$Res> {
+  factory $WebConfigTestCopyWith(
+          WebConfigTest value, $Res Function(WebConfigTest) then) =
+      _$WebConfigTestCopyWithImpl<$Res, WebConfigTest>;
+  @useResult
+  $Res call({bool valid, String message});
+}
+
+/// @nodoc
+class _$WebConfigTestCopyWithImpl<$Res, $Val extends WebConfigTest>
+    implements $WebConfigTestCopyWith<$Res> {
+  _$WebConfigTestCopyWithImpl(this._value, this._then);
+
+  // ignore: unused_field
+  final $Val _value;
+  // ignore: unused_field
+  final $Res Function($Val) _then;
+
+  /// Create a copy of WebConfigTest
+  /// with the given fields replaced by the non-null parameter values.
+  @pragma('vm:prefer-inline')
+  @override
+  $Res call({
+    Object? valid = null,
+    Object? message = null,
+  }) {
+    return _then(_value.copyWith(
+      valid: null == valid
+          ? _value.valid
+          : valid // ignore: cast_nullable_to_non_nullable
+              as bool,
+      message: null == message
+          ? _value.message
+          : message // ignore: cast_nullable_to_non_nullable
+              as String,
+    ) as $Val);
+  }
+}
+
+/// @nodoc
+abstract class _$$WebConfigTestImplCopyWith<$Res>
+    implements $WebConfigTestCopyWith<$Res> {
+  factory _$$WebConfigTestImplCopyWith(
+          _$WebConfigTestImpl value, $Res Function(_$WebConfigTestImpl) then) =
+      __$$WebConfigTestImplCopyWithImpl<$Res>;
+  @override
+  @useResult
+  $Res call({bool valid, String message});
+}
+
+/// @nodoc
+class __$$WebConfigTestImplCopyWithImpl<$Res>
+    extends _$WebConfigTestCopyWithImpl<$Res, _$WebConfigTestImpl>
+    implements _$$WebConfigTestImplCopyWith<$Res> {
+  __$$WebConfigTestImplCopyWithImpl(
+      _$WebConfigTestImpl _value, $Res Function(_$WebConfigTestImpl) _then)
+      : super(_value, _then);
+
+  /// Create a copy of WebConfigTest
+  /// with the given fields replaced by the non-null parameter values.
+  @pragma('vm:prefer-inline')
+  @override
+  $Res call({
+    Object? valid = null,
+    Object? message = null,
+  }) {
+    return _then(_$WebConfigTestImpl(
+      valid: null == valid
+          ? _value.valid
+          : valid // ignore: cast_nullable_to_non_nullable
+              as bool,
+      message: null == message
+          ? _value.message
+          : message // ignore: cast_nullable_to_non_nullable
+              as String,
+    ));
+  }
+}
+
+/// @nodoc
+@JsonSerializable()
+class _$WebConfigTestImpl implements _WebConfigTest {
+  const _$WebConfigTestImpl({this.valid = false, this.message = ''});
+
+  factory _$WebConfigTestImpl.fromJson(Map<String, dynamic> json) =>
+      _$$WebConfigTestImplFromJson(json);
+
+  @override
+  @JsonKey()
+  final bool valid;
+  @override
+  @JsonKey()
+  final String message;
+
+  @override
+  String toString() {
+    return 'WebConfigTest(valid: $valid, message: $message)';
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        (other.runtimeType == runtimeType &&
+            other is _$WebConfigTestImpl &&
+            (identical(other.valid, valid) || other.valid == valid) &&
+            (identical(other.message, message) || other.message == message));
+  }
+
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @override
+  int get hashCode => Object.hash(runtimeType, valid, message);
+
+  /// Create a copy of WebConfigTest
+  /// with the given fields replaced by the non-null parameter values.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @override
+  @pragma('vm:prefer-inline')
+  _$$WebConfigTestImplCopyWith<_$WebConfigTestImpl> get copyWith =>
+      __$$WebConfigTestImplCopyWithImpl<_$WebConfigTestImpl>(this, _$identity);
+
+  @override
+  Map<String, dynamic> toJson() {
+    return _$$WebConfigTestImplToJson(
+      this,
+    );
+  }
+}
+
+abstract class _WebConfigTest implements WebConfigTest {
+  const factory _WebConfigTest({final bool valid, final String message}) =
+      _$WebConfigTestImpl;
+
+  factory _WebConfigTest.fromJson(Map<String, dynamic> json) =
+      _$WebConfigTestImpl.fromJson;
+
+  @override
+  bool get valid;
+  @override
+  String get message;
+
+  /// Create a copy of WebConfigTest
+  /// with the given fields replaced by the non-null parameter values.
+  @override
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  _$$WebConfigTestImplCopyWith<_$WebConfigTestImpl> get copyWith =>
       throw _privateConstructorUsedError;
 }
 

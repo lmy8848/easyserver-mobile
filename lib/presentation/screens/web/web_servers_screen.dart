@@ -171,12 +171,9 @@ class _ServerCard extends StatelessWidget {
                     '运行 ${server.uptime.isEmpty ? '-' : server.uptime}',
                     _mem(server.memoryBytes),
                   ],
-                  if (installed && !server.configOk) '配置异常',
                 ].join(' · '),
-                style: theme.textTheme.bodySmall?.copyWith(
-                    color: installed && !server.configOk
-                        ? Colors.red.shade400
-                        : Colors.grey),
+                style:
+                    theme.textTheme.bodySmall?.copyWith(color: Colors.grey),
               ),
               if (installed) ...[
                 const SizedBox(height: 8),

@@ -19,11 +19,22 @@ class WebServer with _$WebServer {
     @JsonKey(name: 'memory_bytes') @Default(0) int memoryBytes,
     @Default('') String uptime,
     @JsonKey(name: 'auto_start') @Default(false) bool autoStart,
-    @JsonKey(name: 'config_ok') @Default(false) bool configOk,
   }) = _WebServer;
 
   factory WebServer.fromJson(Map<String, dynamic> json) =>
       _$WebServerFromJson(json);
+}
+
+/// 配置检测结果（GET /web-servers/:id/test-config，后端真实执行检测命令）
+@freezed
+class WebConfigTest with _$WebConfigTest {
+  const factory WebConfigTest({
+    @Default(false) bool valid,
+    @Default('') String message,
+  }) = _WebConfigTest;
+
+  factory WebConfigTest.fromJson(Map<String, dynamic> json) =>
+      _$WebConfigTestFromJson(json);
 }
 
 /// 网站（后端 web.Website）

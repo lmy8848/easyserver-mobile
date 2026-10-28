@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/action_guard.dart';
 import '../../../core/app_toast.dart';
+import '../../../di/providers.dart';
 import '../../../domain/entities/web_server.dart';
 import '../../providers/web_provider.dart';
 import 'website_edit_sheet.dart';
@@ -22,6 +24,28 @@ class WebsiteListScreen extends ConsumerStatefulWidget {
 }
 
 class _WebsiteListScreenState extends ConsumerState<WebsiteListScreen> {
+  WebConfigTest? _configTest;
+  bool _testing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _runConfigTest());
+  }
+
+  /// 真实配置检测（后端执行 nginx -t 等命令）；守卫去重，连点只测一次
+  Future<void> _runConfigTest() async {
+    if (!mounted) return;
+    setState(() => _testing = true);
+    final result = await globalActionGuard.run('web:test-config:${widget.serverId}',
+        () => ref.read(webRepositoryProvider).testConfig(widget.serverId));
+    if (!mounted) return;
+    setState(() {
+      _testing = false;
+      if (result != null) _configTest = result;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -40,57 +64,65 @@ class _WebsiteListScreenState extends ConsumerState<WebsiteListScreen> {
       body: RefreshIndicator(
         onRefresh: () =>
             ref.refresh(websitesProvider(widget.serverId).future),
-        child: sitesAsync.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) => ListView(
-            children: [
-              const SizedBox(height: 120),
-              Icon(Icons.error_outline, size: 48, color: Colors.grey.shade400),
-              const SizedBox(height: 12),
-              Center(child: Text('加载失败', style: theme.textTheme.titleMedium)),
-              const SizedBox(height: 16),
-              Center(
-                child: FilledButton.tonal(
-                  onPressed: () =>
-                      ref.invalidate(websitesProvider(widget.serverId)),
-                  child: const Text('重试'),
-                ),
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 88),
+          children: [
+            _ConfigTestBanner(
+              result: _configTest,
+              testing: _testing,
+              onRetest: _runConfigTest,
+            ),
+            sitesAsync.when(
+          loading: () => const Padding(
+            padding: EdgeInsets.all(48),
+            child: Center(child: CircularProgressIndicator()),
+          ),
+          error: (e, _) => Card(
+            child: ListTile(
+              leading: Icon(Icons.error_outline, color: Colors.red.shade300),
+              title: const Text('网站列表加载失败'),
+              subtitle: Text('$e', maxLines: 2, overflow: TextOverflow.ellipsis),
+              trailing: TextButton(
+                onPressed: () =>
+                    ref.invalidate(websitesProvider(widget.serverId)),
+                child: const Text('重试'),
               ),
-            ],
+            ),
           ),
           data: (sites) {
             if (sites.isEmpty) {
-              return ListView(
-                children: [
-                  const SizedBox(height: 140),
-                  Icon(Icons.language,
-                      size: 48, color: Colors.grey.shade400),
-                  const SizedBox(height: 12),
-                  Center(
-                    child: Text('还没有网站',
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 48),
+                child: Column(
+                  children: [
+                    Icon(Icons.language,
+                        size: 40, color: Colors.grey.shade400),
+                    const SizedBox(height: 8),
+                    Text('还没有网站',
                         style: theme.textTheme.bodyMedium
                             ?.copyWith(color: Colors.grey)),
-                  ),
-                  const SizedBox(height: 4),
-                  Center(
-                    child: Text('点右下角「新建网站」部署第一个站点',
+                    const SizedBox(height: 4),
+                    Text('点右下角「新建网站」部署第一个站点',
                         style: theme.textTheme.bodySmall
                             ?.copyWith(color: Colors.grey)),
-                  ),
-                ],
+                  ],
+                ),
               );
             }
-            return ListView.builder(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 88),
-              itemCount: sites.length,
-              itemBuilder: (context, i) => _SiteCard(
-                site: sites[i],
-                onToggle: (enabled) =>
-                    _siteAction(context, enabled ? 'enable' : 'disable', sites[i]),
-                onDelete: () => _delete(context, sites[i]),
-              ),
+            return Column(
+              children: [
+                for (final site in sites)
+                  _SiteCard(
+                    site: site,
+                    onToggle: (enabled) => _siteAction(
+                        context, enabled ? 'enable' : 'disable', site),
+                    onDelete: () => _delete(context, site),
+                  ),
+              ],
             );
           },
+        ),
+          ],
         ),
       ),
     );
@@ -219,4 +251,58 @@ class _SiteCard extends StatelessWidget {
         'proxy': '反代',
       }[t] ??
       t;
+}
+
+/// 配置检测结果横幅：进入页面自动检测，支持手动重测
+class _ConfigTestBanner extends StatelessWidget {
+  final WebConfigTest? result;
+  final bool testing;
+  final VoidCallback onRetest;
+
+  const _ConfigTestBanner({
+    required this.result,
+    required this.testing,
+    required this.onRetest,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    if (testing) {
+      return const Card(
+        child: ListTile(
+          leading: SizedBox(
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+          title: Text('正在检测配置…'),
+        ),
+      );
+    }
+    if (result == null) return const SizedBox.shrink();
+
+    final valid = result!.valid;
+    final color = valid ? Colors.green.shade600 : Colors.red.shade400;
+    return Card(
+      child: ListTile(
+        leading: Icon(valid ? Icons.verified_outlined : Icons.warning_amber,
+            color: color),
+        title: Text(valid ? '配置检测通过' : '配置检测未通过',
+            style: theme.textTheme.titleSmall?.copyWith(color: color)),
+        subtitle: result!.message.isEmpty
+            ? null
+            : Text(result!.message,
+                style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey),
+                maxLines: 4,
+                overflow: TextOverflow.ellipsis),
+        trailing: IconButton(
+          icon: const Icon(Icons.refresh, size: 20),
+          tooltip: '重新检测',
+          onPressed: onRetest,
+        ),
+      ),
+    );
+  }
 }
