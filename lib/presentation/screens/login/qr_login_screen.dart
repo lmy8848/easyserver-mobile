@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import '../../../core/logger/app_logger.dart';
 import '../../../di/providers.dart';
 
 class QRLoginScreen extends ConsumerStatefulWidget {
@@ -18,6 +19,8 @@ class _QRLoginScreenState extends ConsumerState<QRLoginScreen> {
   @override
   void initState() {
     super.initState();
+    // 显式持有 controller：手电筒开关需要它，异常信息也能从同一实例拿到
+    _controller = MobileScannerController();
     // 扫码授权需要本机已登录（后端 confirm 有 JWT 中间件）；
     // 未登录时明确引导，避免扫码后 401 停留造成困惑
     _checkLogin();
@@ -82,6 +85,40 @@ class _QRLoginScreenState extends ConsumerState<QRLoginScreen> {
                 MobileScanner(
                   controller: _controller,
                   onDetect: _onDetect,
+                  errorBuilder: (context, error, child) {
+                    // 相机起不来时把真实原因显示出来并进日志，避免只有黑屏图标
+                    final detail = error.errorDetails?.message ??
+                        error.errorCode.name;
+                    AppLogger.e('扫码相机启动失败: $detail');
+                    return Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.no_photography_outlined,
+                                size: 48, color: Colors.orange),
+                            const SizedBox(height: 12),
+                            const Text('相机启动失败',
+                                style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.white)),
+                            const SizedBox(height: 8),
+                            Text(detail,
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                    fontSize: 12, color: Colors.white70)),
+                            const SizedBox(height: 16),
+                            OutlinedButton(
+                              onPressed: () => _controller?.start(),
+                              child: const Text('重试'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
                 ),
                 if (_processing)
                   const Center(child: CircularProgressIndicator()),
