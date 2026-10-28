@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../core/action_guard.dart';
 import '../../domain/repositories/file_repository.dart';
 import '../../di/providers.dart';
 
@@ -55,17 +56,19 @@ class FileListNotifier extends StateNotifier<FileListState> {
   }
 
   Future<void> mkdir(String path) async {
-    await _repo.mkdir(path);
+    await globalActionGuard.run('file:mkdir:$path', () => _repo.mkdir(path));
     await load(state.currentPath);
   }
 
   Future<void> delete(String path, {bool recursive = false}) async {
-    await _repo.delete(path, recursive: recursive);
+    await globalActionGuard.run(
+        'file:delete:$path', () => _repo.delete(path, recursive: recursive));
     await load(state.currentPath);
   }
 
   Future<void> rename(String oldPath, String newPath) async {
-    await _repo.rename(oldPath, newPath);
+    await globalActionGuard.run(
+        'file:rename:$oldPath', () => _repo.rename(oldPath, newPath));
     await load(state.currentPath);
   }
 }

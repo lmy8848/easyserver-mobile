@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/app_toast.dart';
+import '../../../core/nav_once.dart';
 import '../../providers/app_settings_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/home_state.dart';
@@ -77,7 +78,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 child: Icon(Icons.wifi_off, size: 16, color: Colors.orange)),
           IconButton(
               icon: const Icon(Icons.qr_code_scanner),
-              onPressed: () => context.push('/qr-login'),
+              onPressed: () => pushOnce(context, '/qr-login'),
               tooltip: '扫码登录'),
           IconButton(
             icon: Badge(
@@ -88,14 +89,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               child: const Icon(Icons.notifications_outlined),
             ),
             tooltip: '通知中心',
-            onPressed: () => context.push('/notifications'),
+            onPressed: () => pushOnce(context, '/notifications'),
           ),
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert),
             onSelected: (v) {
               switch (v) {
                 case 'settings':
-                  context.push('/profile');
+                  pushOnce(context, '/profile');
                 case 'about':
                   showAboutDialog(
                       context: context,
@@ -216,28 +217,36 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             _drawerItem(Icons.folder, '文件管理', () => _selectTab(4)),
             _drawerItem(Icons.schedule, '计划任务', () {
               Navigator.pop(context);
-              context.push('/cron');
+              pushOnce(context, '/cron');
             }),
             _drawerItem(Icons.security_outlined, '防火墙', () {
               Navigator.pop(context);
-              context.push('/firewall');
+              pushOnce(context, '/firewall');
+            }),
+            _drawerItem(Icons.language, '网站管理', () {
+              Navigator.pop(context);
+              pushOnce(context, '/web');
+            }),
+            _drawerItem(Icons.share_outlined, '文件外链', () {
+              Navigator.pop(context);
+              pushOnce(context, '/shares');
             }),
             _drawerItem(Icons.lan_outlined, '局域网传文件', () {
               Navigator.pop(context);
-              context.push('/lanshare');
+              pushOnce(context, '/lanshare');
             }),
             const Divider(),
             _drawerItem(Icons.settings_outlined, '设置与安全', () {
               Navigator.pop(context);
-              context.push('/profile');
+              pushOnce(context, '/profile');
             }),
             _drawerItem(Icons.dns, '服务器配置', () {
               Navigator.pop(context);
-              context.push('/setup');
+              pushOnce(context, '/setup');
             }),
             _drawerItem(Icons.qr_code_scanner, '扫码登录', () {
               Navigator.pop(context);
-              context.push('/qr-login');
+              pushOnce(context, '/qr-login');
             }),
             const Divider(),
             _drawerItem(Icons.logout, '退出登录', () {

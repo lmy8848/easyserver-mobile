@@ -22,6 +22,10 @@ import '../data/repositories/cron_repository_impl.dart';
 import '../domain/repositories/cron_repository.dart';
 import '../data/repositories/firewall_repository_impl.dart';
 import '../domain/repositories/firewall_repository.dart';
+import '../data/repositories/share_repository_impl.dart';
+import '../domain/repositories/share_repository.dart';
+import '../data/repositories/web_repository_impl.dart';
+import '../domain/repositories/web_repository.dart';
 import '../domain/entities/server_config.dart';
 
 final secureStorageProvider = Provider<SecureStorage>((ref) => SecureStorage());
@@ -110,4 +114,12 @@ final cronRepositoryProvider = Provider<CronRepository>((ref) {
 
 final firewallRepositoryProvider = Provider<FirewallRepository>((ref) {
   return FirewallRepositoryImpl(ref.read(apiClientProvider));
+});
+
+final shareRepositoryProvider = Provider<ShareRepository>((ref) {
+  return ShareRepositoryImpl(ref.read(apiClientProvider));
+});
+
+final webRepositoryProvider = Provider<WebRepository>((ref) {
+  return WebRepositoryImpl(ref.read(apiClientProvider));
 });

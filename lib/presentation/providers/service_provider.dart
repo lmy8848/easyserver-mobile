@@ -39,6 +39,7 @@ class ServiceActionNotifier extends StateNotifier<ServiceActionState> {
   }
 
   Future<void> _action(String label, Future<void> Function() action) async {
+    if (state.isLoading) return; // 连点去重：上一操作未完成前忽略
     state = ServiceActionState(isLoading: true);
     try {
       await action();

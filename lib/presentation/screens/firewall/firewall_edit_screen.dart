@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/action_guard.dart';
 import '../../../core/app_toast.dart';
 import '../../../di/providers.dart';
 import '../../../domain/entities/firewall_rule.dart';
@@ -186,24 +187,30 @@ class _FirewallEditScreenState extends ConsumerState<FirewallEditScreen> {
       ipVersion: _ipVersion,
       remark: _remark.text.trim(),
     );
-    try {
-      final actions = ref.read(firewallActionsProvider);
-      if (_isEdit) {
-        await ref
-            .read(firewallRepositoryProvider)
-            .updateRule(widget.rule!.id, input);
-      } else {
-        await ref.read(firewallRepositoryProvider).createRule(input);
+    // 守卫去重：连点保存只发一次请求
+    final saved = await globalActionGuard.run<bool>(
+        'firewall:save:${widget.rule?.id ?? 'new'}', () async {
+      try {
+        if (_isEdit) {
+          await ref
+              .read(firewallRepositoryProvider)
+              .updateRule(widget.rule!.id, input);
+        } else {
+          await ref.read(firewallRepositoryProvider).createRule(input);
+        }
+        return true;
+      } catch (e) {
+        if (mounted) AppToast.show('保存失败: $e', error: true);
+        return false;
       }
-      actions.refresh();
+    });
+    if (saved == true) {
+      ref.read(firewallActionsProvider).refresh();
       if (mounted) {
         AppToast.show(_isEdit ? '规则已更新' : '规则已创建');
         Navigator.of(context).pop(true);
       }
-    } catch (e) {
-      if (mounted) AppToast.show('保存失败: $e', error: true);
-    } finally {
-      if (mounted) setState(() => _saving = false);
     }
+    if (mounted) setState(() => _saving = false);
   }
 }

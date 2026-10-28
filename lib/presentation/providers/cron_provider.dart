@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/action_guard.dart';
 import '../../di/providers.dart';
 import '../../domain/entities/cron_task.dart';
 
@@ -14,25 +15,33 @@ final cronRunsProvider =
   return ref.read(cronRepositoryProvider).runs(name);
 });
 
-/// 任务操作（启停/运行/删除）：统一走这里，成功后刷新列表
+/// 任务操作（启停/运行/删除）：统一走这里，成功后刷新列表。
+/// 写操作经 ActionGuard 去重，连点同键只发一次请求。
 class CronActions {
   final Ref _ref;
   CronActions(this._ref);
 
   Future<void> setEnabled(CronTask task, bool enabled) async {
-    final repo = _ref.read(cronRepositoryProvider);
-    if (enabled) {
-      await repo.enable(task.name);
-    } else {
-      await repo.disable(task.name);
-    }
+    await globalActionGuard.run(
+        'cron:${enabled ? 'enable' : 'disable'}:${task.name}', () async {
+      final repo = _ref.read(cronRepositoryProvider);
+      if (enabled) {
+        await repo.enable(task.name);
+      } else {
+        await repo.disable(task.name);
+      }
+    });
   }
 
-  Future<void> run(CronTask task) =>
-      _ref.read(cronRepositoryProvider).run(task.name);
+  Future<void> run(CronTask task) async {
+    await globalActionGuard.run('cron:run:${task.name}',
+        () => _ref.read(cronRepositoryProvider).run(task.name));
+  }
 
-  Future<void> delete(CronTask task) =>
-      _ref.read(cronRepositoryProvider).delete(task.name);
+  Future<void> delete(CronTask task) async {
+    await globalActionGuard.run('cron:delete:${task.name}',
+        () => _ref.read(cronRepositoryProvider).delete(task.name));
+  }
 
   void refresh() => _ref.invalidate(cronListProvider);
 }

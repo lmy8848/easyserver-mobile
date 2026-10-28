@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../core/action_guard.dart';
 import '../../core/app_toast.dart';
 import '../../core/logger/app_logger.dart';
 import '../../data/repositories/container_repository_impl.dart';
@@ -67,7 +68,9 @@ class ContainerNotifier extends StateNotifier<ContainerState> {
     }
   }
 
-  Future<void> _action(Future<void> Function() op, String successMsg) async {
+  Future<void> _action(
+      String key, Future<void> Function() op, String successMsg) async {
+    if (!globalActionGuard.tryBegin(key)) return; // 连点去重：同容器操作在途时忽略
     try {
       await op();
       await load(force: true);
@@ -75,17 +78,19 @@ class ContainerNotifier extends StateNotifier<ContainerState> {
     } catch (e) {
       AppLogger.w('容器操作失败: $e');
       AppToast.show('操作失败: $e', error: true);
+    } finally {
+      globalActionGuard.end(key);
     }
   }
 
-  Future<void> start(String id) =>
-      _action(() => _ref.read(containerRepositoryProvider).start(id), '已启动');
-  Future<void> stop(String id) =>
-      _action(() => _ref.read(containerRepositoryProvider).stop(id), '已停止');
-  Future<void> restart(String id) =>
-      _action(() => _ref.read(containerRepositoryProvider).restart(id), '已重启');
-  Future<void> remove(String id) =>
-      _action(() => _ref.read(containerRepositoryProvider).remove(id), '已删除');
+  Future<void> start(String id) => _action('container:start:$id',
+      () => _ref.read(containerRepositoryProvider).start(id), '已启动');
+  Future<void> stop(String id) => _action('container:stop:$id',
+      () => _ref.read(containerRepositoryProvider).stop(id), '已停止');
+  Future<void> restart(String id) => _action('container:restart:$id',
+      () => _ref.read(containerRepositoryProvider).restart(id), '已重启');
+  Future<void> remove(String id) => _action('container:remove:$id',
+      () => _ref.read(containerRepositoryProvider).remove(id), '已删除');
 }
 
 final containerProvider =

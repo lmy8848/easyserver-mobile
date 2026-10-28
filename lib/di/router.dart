@@ -10,6 +10,9 @@ import '../presentation/screens/logs/logs_screen.dart';
 import '../presentation/screens/lanshare/lanshare_screen.dart';
 import '../presentation/screens/cron/cron_screen.dart';
 import '../presentation/screens/firewall/firewall_screen.dart';
+import '../presentation/screens/shares/shares_screen.dart';
+import '../presentation/screens/web/web_servers_screen.dart';
+import '../presentation/screens/web/website_list_screen.dart';
 import '../presentation/screens/dashboard/home_screen.dart';
 
 final GlobalKey<NavigatorState> _rootNavigatorKey =
@@ -35,6 +38,16 @@ final appRouter = GoRouter(
     GoRoute(path: '/cron', builder: (context, state) => const CronScreen()),
     GoRoute(
         path: '/firewall', builder: (context, state) => const FirewallScreen()),
+    GoRoute(path: '/shares', builder: (context, state) => const SharesScreen()),
+    GoRoute(
+        path: '/web', builder: (context, state) => const WebServersScreen()),
+    GoRoute(
+      path: '/web/:sid/:name',
+      builder: (context, state) => WebsiteListScreen(
+        serverId: int.tryParse(state.pathParameters['sid'] ?? '') ?? 0,
+        serverName: state.pathParameters['name'] ?? 'Web 服务器',
+      ),
+    ),
     GoRoute(
       path: '/',
       builder: (context, state) => const HomeScreen(),

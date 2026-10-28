@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/file_provider.dart';
 import '../../widgets/loading_overlay.dart';
+import '../shares/share_create_dialog.dart';
 
 class FilesTab extends ConsumerStatefulWidget {
   const FilesTab({super.key});
@@ -131,6 +132,12 @@ class _FilesTabState extends ConsumerState<FilesTab> {
                                         ],
                                       ),
                                     );
+                                  } else if (v == 'share') {
+                                    showCreateShareDialog(context, ref,
+                                        filePath: entry.path,
+                                        fileName: entry.name);
+                                  } else if (v == 'rename') {
+                                    _showRenameDialog(entry);
                                   }
                                 },
                                 itemBuilder: (context) => [
@@ -139,6 +146,11 @@ class _FilesTabState extends ConsumerState<FilesTab> {
                                       child: ListTile(
                                           leading: Icon(Icons.edit),
                                           title: Text('重命名'))),
+                                  const PopupMenuItem(
+                                      value: 'share',
+                                      child: ListTile(
+                                          leading: Icon(Icons.share),
+                                          title: Text('生成外链'))),
                                   const PopupMenuItem(
                                       value: 'delete',
                                       child: ListTile(
@@ -165,6 +177,40 @@ class _FilesTabState extends ConsumerState<FilesTab> {
   Future<void> _navigateTo(String path) async {
     setState(() => _currentPath = path);
     await ref.read(fileListProvider(path).notifier).load(path);
+  }
+
+  /// 重命名：原菜单项此前没有实现，这里补上
+  Future<void> _showRenameDialog(entry) async {
+    final controller = TextEditingController(text: entry.name);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('重命名'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(labelText: '新名称'),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('重命名')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    final newName = controller.text.trim();
+    if (newName.isEmpty || newName == entry.name) return;
+    final parent = _getParentPath(entry.path) ?? '/';
+    final newPath = parent == '/'
+        ? '/$newName'
+        : '$parent/$newName';
+    await ref
+        .read(fileListProvider(_currentPath).notifier)
+        .rename(entry.path, newPath);
   }
 
   String? _getParentPath(String path) {

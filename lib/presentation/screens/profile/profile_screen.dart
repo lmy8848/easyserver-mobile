@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import '../../../core/nav_once.dart';
 import '../../../di/providers.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/dashboard_settings_provider.dart';
@@ -253,13 +254,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     title: const Text('服务器配置'),
                     subtitle:
                         Text(ref.watch(serverConfigProvider)?.host ?? '未配置'),
-                    onTap: () => context.push('/setup'),
+                    onTap: () => pushOnce(context, '/setup'),
                   ),
                   ListTile(
                     leading: const Icon(Icons.receipt_long),
                     title: const Text('运行日志'),
                     subtitle: const Text('全局异常与运行事件记录'),
-                    onTap: () => context.push('/logs'),
+                    onTap: () => pushOnce(context, '/logs'),
                   ),
                   ListTile(
                     leading: const Icon(Icons.logout, color: Colors.red),
