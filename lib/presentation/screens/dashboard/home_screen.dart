@@ -218,6 +218,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               Navigator.pop(context);
               context.push('/cron');
             }),
+            _drawerItem(Icons.security_outlined, '防火墙', () {
+              Navigator.pop(context);
+              context.push('/firewall');
+            }),
             _drawerItem(Icons.lan_outlined, '局域网传文件', () {
               Navigator.pop(context);
               context.push('/lanshare');

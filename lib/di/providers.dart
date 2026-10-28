@@ -20,6 +20,8 @@ import '../domain/repositories/file_repository.dart';
 import '../domain/repositories/terminal_repository.dart';
 import '../data/repositories/cron_repository_impl.dart';
 import '../domain/repositories/cron_repository.dart';
+import '../data/repositories/firewall_repository_impl.dart';
+import '../domain/repositories/firewall_repository.dart';
 import '../domain/entities/server_config.dart';
 
 final secureStorageProvider = Provider<SecureStorage>((ref) => SecureStorage());
@@ -104,4 +106,8 @@ final terminalRepositoryProvider = Provider<TerminalRepository>((ref) {
 
 final cronRepositoryProvider = Provider<CronRepository>((ref) {
   return CronRepositoryImpl(ref.read(apiClientProvider));
+});
+
+final firewallRepositoryProvider = Provider<FirewallRepository>((ref) {
+  return FirewallRepositoryImpl(ref.read(apiClientProvider));
 });
