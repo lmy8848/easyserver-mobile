@@ -57,7 +57,14 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
     if (_activeInterval != effective) {
       _activeInterval = effective;
       _reschedule();
-      if (isActive && _hasLoadedOnce) _loadNow(silent: true);
+      // 首次进入（或切回本页）立即拉一次；放在微任务里，避免 build 期间
+      // 同步改变 provider 状态。此前首次进入不发请求，只能看到「暂无数据」，
+      // 切走再切回才加载。
+      if (isActive) {
+        Future.microtask(() {
+          if (mounted) _loadNow(silent: _hasLoadedOnce);
+        });
+      }
     }
 
     return RefreshIndicator(

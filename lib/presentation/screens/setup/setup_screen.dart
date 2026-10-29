@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../di/providers.dart';
 import '../../../domain/entities/server_config.dart';
+import '../../../data/services/mobile_direct.dart';
 
 class SetupScreen extends ConsumerStatefulWidget {
   const SetupScreen({super.key});
@@ -16,6 +17,9 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
   final _portController = TextEditingController(text: '8080');
   bool _useTls = false;
   bool _isTesting = false;
+  bool _directEnabled = false;
+  final _directUrlController = TextEditingController();
+  final _fingerprintController = TextEditingController();
 
   @override
   void initState() {
@@ -30,6 +34,10 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
       await ref.read(serverConfigProvider.notifier).loadConfig();
       config = ref.read(serverConfigProvider);
     }
+    final md = MobileDirect.instance;
+    final directEnabled = await md.isEnabled();
+    final directUrl = await md.directUrl();
+    final fingerprint = await md.fingerprint();
     if (config == null || !mounted) return;
     final host = config.host;
     final port = config.port;
@@ -38,6 +46,9 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
       _hostController.text = host;
       if (port > 0) _portController.text = port.toString();
       _useTls = useTls;
+      _directEnabled = directEnabled;
+      _directUrlController.text = directUrl ?? '';
+      _fingerprintController.text = fingerprint ?? '';
     });
   }
 
@@ -45,6 +56,8 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
   void dispose() {
     _hostController.dispose();
     _portController.dispose();
+    _directUrlController.dispose();
+    _fingerprintController.dispose();
     super.dispose();
   }
 
@@ -72,7 +85,12 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
         useTls: _useTls,
       );
       await ref.read(serverConfigProvider.notifier).setConfig(config);
+      final md = MobileDirect.instance;
+      await md.setEnabled(_directEnabled);
+      await md.setDirectUrl(_directUrlController.text.trim());
+      await md.setFingerprint(_fingerprintController.text.trim());
       ref.read(apiClientProvider).updateBaseUrl(config.baseUrl);
+      await applyDirectSettings(ref);
 
       if (mounted) context.go('/login');
     } catch (e) {
@@ -144,7 +162,59 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                   return null;
                 },
               ),
-              const SizedBox(height: 32),
+              const SizedBox(height: 8),
+              SwitchListTile(
+                title: const Text('启用移动端直连'),
+                subtitle: const Text('绕过 Cloudflare，直连服务器端口（可选）'),
+                value: _directEnabled,
+                onChanged: (v) => setState(() => _directEnabled = v),
+              ),
+              if (_directEnabled) ...[
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _directUrlController,
+                  decoration: const InputDecoration(
+                    labelText: '直连地址',
+                    hintText: 'https://192.168.1.10:8443',
+                    prefixIcon: Icon(Icons.bolt),
+                  ),
+                  keyboardType: TextInputType.url,
+                  validator: (v) {
+                    if (!_directEnabled) return null;
+                    final t = v?.trim() ?? '';
+                    if (t.isEmpty) return '请输入直连地址';
+                    if (!t.startsWith('https://')) return '直连地址需以 https:// 开头';
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _fingerprintController,
+                  decoration: InputDecoration(
+                    labelText: '证书指纹（SHA-256）',
+                    hintText: '首次连接时点「获取指纹」核对',
+                    prefixIcon: const Icon(Icons.fingerprint),
+                    suffixIcon: TextButton(
+                      onPressed: () async {
+                        final url = _directUrlController.text.trim();
+                        if (!url.startsWith('https://')) return;
+                        final fp =
+                            await MobileDirect.instance.fetchServerFingerprint(url);
+                        if (fp == null) return;
+                        setState(() => _fingerprintController.text = fp);
+                      },
+                      child: const Text('获取指纹'),
+                    ),
+                  ),
+                  validator: (v) {
+                    if (!_directEnabled) return null;
+                    if ((v ?? '').trim().isEmpty) return '请获取并核对证书指纹';
+                    return null;
+                  },
+                ),
+              ],
+              const SizedBox(height: 24),
+              const SizedBox(height: 8),
               FilledButton(
                 onPressed: _isTesting ? null : _save,
                 child: _isTesting

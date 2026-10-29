@@ -54,6 +54,14 @@ class AppLogger {
   static void w(String message) => instance.log(LogLevel.warn, message);
   static void e(String message) => instance.log(LogLevel.error, message);
 
+  /// 是否记录请求详情（方法/URL/状态/耗时）。默认关闭，可在「运行日志」页开关，
+  /// 开启后用于现场排查网络问题；不含请求体与令牌。
+  static bool recordRequests = false;
+
+  static void req(String message) {
+    if (recordRequests) i(message);
+  }
+
   void clear() {
     _entries.clear();
     if (!_updates.isClosed) _updates.add(entries);

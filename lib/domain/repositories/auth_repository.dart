@@ -16,6 +16,9 @@ abstract class AuthRepository {
   Future<List<String>> enableTotp(String code);
   Future<void> disableTotp(String password);
   Future<void> confirmQrLogin(String qrToken);
+
+  /// 用 refresh token 换取新的 access token；网络失败返回 false（不清登录态）。
+  Future<bool> refreshAccess();
   Future<Map<String, dynamic>> getTurnstileConfig();
   Future<List<Map<String, dynamic>>> getSessions();
   Future<void> kickSession(String token);

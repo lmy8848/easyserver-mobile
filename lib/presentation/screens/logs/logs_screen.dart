@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
 import '../../../core/logger/app_logger.dart';
 
 /// 运行日志：全局异常与埋点的环形缓冲视图（最近 500 条）。
@@ -14,10 +16,29 @@ class LogsScreen extends ConsumerStatefulWidget {
 class _LogsScreenState extends ConsumerState<LogsScreen> {
   late List<LogEntry> _entries;
   final _scrollController = ScrollController();
+  bool _recordRequests = AppLogger.recordRequests;
+
+  static const _recordPrefKey = 'log_requests';
+
+  Future<void> _loadRecordPref() async {
+    final prefs = await SharedPreferences.getInstance();
+    final enabled = prefs.getBool(_recordPrefKey) ?? false;
+    AppLogger.recordRequests = enabled;
+    if (mounted) setState(() => _recordRequests = enabled);
+  }
+
+  Future<void> _toggleRecordRequests() async {
+    final enabled = !_recordRequests;
+    AppLogger.recordRequests = enabled;
+    setState(() => _recordRequests = enabled);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_recordPrefKey, enabled);
+  }
 
   @override
   void initState() {
     super.initState();
+    _loadRecordPref();
     _entries = AppLogger.instance.entries;
     AppLogger.instance.updates.listen((_) {
       if (mounted) setState(() => _entries = AppLogger.instance.entries);
@@ -59,6 +80,13 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
       appBar: AppBar(
         title: Text('运行日志（${_entries.length}）'),
         actions: [
+          IconButton(
+              icon: Icon(
+                _recordRequests ? Icons.wifi_tethering : Icons.wifi_tethering_off,
+                color: _recordRequests ? theme.colorScheme.primary : null,
+              ),
+              tooltip: _recordRequests ? '正在记录请求详情（点按关闭）' : '记录请求详情（点按开启）',
+              onPressed: _toggleRecordRequests),
           IconButton(
               icon: const Icon(Icons.copy),
               tooltip: '复制全部',

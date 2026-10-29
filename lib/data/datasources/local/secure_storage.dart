@@ -6,6 +6,7 @@ class SecureStorage {
   static const _serverUrlKey = 'server_url';
   static const _usernameKey = 'saved_username';
   static const _deviceIdKey = 'device_id';
+  static const _refreshKey = 'refresh_token';
 
   // JWT is a sensitive credential -> encrypted at rest via FlutterSecureStorage.
   final FlutterSecureStorage _secure = const FlutterSecureStorage();
@@ -23,6 +24,19 @@ class SecureStorage {
 
   Future<void> deleteToken() async {
     await _secure.delete(key: _tokenKey);
+  }
+
+  // --- refresh token（90 天，存安全存储；服务重启不丢登录） ---
+  Future<void> saveRefreshToken(String token) async {
+    await _secure.write(key: _refreshKey, value: token);
+  }
+
+  Future<String?> getRefreshToken() async {
+    return await _secure.read(key: _refreshKey);
+  }
+
+  Future<void> deleteRefreshToken() async {
+    await _secure.delete(key: _refreshKey);
   }
 
   // --- device_id (per-install identifier, not secret) ---
