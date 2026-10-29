@@ -2,8 +2,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/services/mobile_direct.dart';
 import '../data/datasources/local/device_identity.dart';
-import '../data/repositories/settings_repository_impl.dart';
-import '../data/repositories/terminal_repository_impl.dart';
 import '../data/datasources/local/secure_storage.dart';
 import '../data/datasources/local/settings_storage.dart';
 import '../data/datasources/remote/api_client.dart';
@@ -14,8 +12,6 @@ import '../data/repositories/service_repository_impl.dart';
 import '../data/repositories/notification_repository_impl.dart';
 import '../data/repositories/file_repository_impl.dart';
 import '../domain/repositories/auth_repository.dart';
-import '../domain/repositories/settings_repository.dart';
-import '../domain/repositories/terminal_repository.dart';
 import '../domain/repositories/monitor_repository.dart';
 import '../domain/repositories/service_repository.dart';
 import '../domain/repositories/notification_repository.dart';
@@ -126,14 +122,6 @@ final serviceRepositoryProvider = Provider<ServiceRepository>((ref) {
 
 final notificationRepositoryProvider = Provider<NotificationRepository>((ref) {
   return NotificationRepositoryImpl(ref.read(apiClientProvider));
-});
-
-final settingsRepositoryProvider = Provider<SettingsRepository>((ref) {
-  return SettingsRepositoryImpl(ref.read(apiClientProvider));
-});
-
-final terminalRepositoryProvider = Provider<TerminalRepository>((ref) {
-  return TerminalRepositoryImpl(ref.read(wsClientProvider));
 });
 
 final fileRepositoryProvider = Provider<FileRepository>((ref) {
