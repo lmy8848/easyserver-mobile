@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../di/providers.dart';
 import '../../providers/auth_provider.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
@@ -15,6 +16,29 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _passwordController = TextEditingController();
   final _totpController = TextEditingController();
   bool _obscurePassword = true;
+
+  /// 面板是否开启了登录 Turnstile 人机验证（null = 未知/检测中）。
+  /// 移动端无法承载网页验证组件，开启时给出明确引导而不是让登录莫名失败。
+  bool? _turnstileLogin;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTurnstile();
+  }
+
+  Future<void> _loadTurnstile() async {
+    try {
+      final cfg =
+          await ref.read(authRepositoryProvider).getTurnstileConfig();
+      if (mounted) {
+        setState(() => _turnstileLogin = cfg['enable_login'] == true);
+      }
+    } catch (_) {
+      // 未配置 Turnstile 时端点不存在或请求失败，视为未开启
+      if (mounted) setState(() => _turnstileLogin = false);
+    }
+  }
 
   @override
   void dispose() {
@@ -106,6 +130,31 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     style: theme.textTheme.headlineMedium
                         ?.copyWith(fontWeight: FontWeight.bold)),
                 const SizedBox(height: 32),
+                if (_turnstileLogin == true)
+                  Container(
+                    width: double.infinity,
+                    margin: const EdgeInsets.only(bottom: 16),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.shade100,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.warning_amber,
+                            size: 20, color: Colors.orange.shade800),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            '面板已开启 Turnstile 人机验证，移动端暂不支持网页验证组件，'
+                            '请在浏览器登录或由管理员在设置中关闭该开关',
+                            style: TextStyle(
+                                fontSize: 12, color: Colors.orange.shade900),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 TextFormField(
                   controller: _usernameController,
                   decoration: const InputDecoration(
