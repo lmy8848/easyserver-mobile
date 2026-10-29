@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -84,6 +85,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
         port: int.parse(_portController.text.trim()),
         useTls: _useTls,
       );
+      await _checkReachable(config);
       await ref.read(serverConfigProvider.notifier).setConfig(config);
       final md = MobileDirect.instance;
       await md.setEnabled(_directEnabled);
@@ -100,6 +102,22 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
       }
     } finally {
       if (mounted) setState(() => _isTesting = false);
+    }
+  }
+
+  /// 连通性测试：/health 为根路径公开端点，任何 HTTP 响应都视为可达
+  /// （连接拒绝/超时/DNS 失败才抛错），避免只存配置不测通的误导转圈。
+  Future<void> _checkReachable(ServerConfig config) async {
+    final dio = Dio(BaseOptions(
+      connectTimeout: const Duration(seconds: 6),
+      receiveTimeout: const Duration(seconds: 6),
+      validateStatus: (_) => true,
+    ));
+    try {
+      await dio.getUri<dynamic>(Uri.parse('${config.baseUrl}/health'));
+    } on DioException catch (e) {
+      throw Exception(
+          '无法连接 ${config.baseUrl}（${e.type.name}），请检查地址与端口');
     }
   }
 
