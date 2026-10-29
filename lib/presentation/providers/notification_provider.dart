@@ -67,6 +67,8 @@ class NotificationNotifier extends StateNotifier<NotificationState> {
       bool announceNew = true}) async {
     if (_disposed) return;
     final repo = _ref.read(notificationRepositoryProvider);
+    // 列表为空时置 loading：首屏与清空后的加载态可达（轮询静默刷新不置）
+    if (state.items.isEmpty) state = state.copyWith(loading: true, error: null);
     try {
       final count = await repo.getUnreadCount();
       if (_disposed) return;
@@ -96,10 +98,11 @@ class NotificationNotifier extends StateNotifier<NotificationState> {
         unreadCount: count,
         clearError: true,
         latestSeenId: latestSeen,
+        loading: false,
       );
     } catch (e) {
       if (!_disposed) {
-        state = state.copyWith(error: '通知刷新失败: $e');
+        state = state.copyWith(error: '通知刷新失败: $e', loading: false);
       }
     }
   }
