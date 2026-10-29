@@ -1,5 +1,8 @@
 import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:xterm/xterm.dart';
+
 import '../../di/providers.dart';
 
 final terminalProvider =
@@ -10,30 +13,31 @@ final terminalProvider =
 class TerminalState {
   final bool connected;
   final bool loading;
-  final List<String> lines;
   final String? error;
 
-  const TerminalState({
-    this.connected = false,
-    this.loading = false,
-    this.lines = const ['Web 终端', '---', '点击"连接"按钮开始'],
-    this.error,
-  });
+  const TerminalState(
+      {this.connected = false, this.loading = false, this.error});
 
-  TerminalState copyWith(
-      {bool? connected, bool? loading, List<String>? lines, String? error}) {
+  TerminalState copyWith({bool? connected, bool? loading, String? error}) {
     return TerminalState(
       connected: connected ?? this.connected,
       loading: loading ?? this.loading,
-      lines: lines ?? this.lines,
       error: error,
     );
   }
 }
 
+/// Web 终端：xterm.dart 全仿真渲染（top/vim 等全屏程序正常重绘），
+/// PTY 原始输出直接喂给模拟器，用户键入经 onOutput 原样回传。
 class TerminalNotifier extends StateNotifier<TerminalState> {
   final Ref _ref;
   StreamSubscription? _subscription;
+
+  /// 终端实例与 notifier 同生命周期，重连复用（connect 时清屏复位）
+  late final Terminal terminal = Terminal(
+    onOutput: _sendRaw,
+    onResize: (cols, rows, _, __) => _sendResize(cols, rows),
+  );
 
   TerminalNotifier(this._ref) : super(const TerminalState());
 
@@ -46,45 +50,29 @@ class TerminalNotifier extends StateNotifier<TerminalState> {
     state = state.copyWith(loading: true, error: null);
 
     try {
+      // WebSocket 握手不走 HTTP 拦截器，301/401 后无法自动刷新：
+      // 连接前先刷新一次 access，确保握手用的是新 token。刷新失败（网络问题）
+      // 时继续用现有 token，避免因直连/网络抖动直接判定未登录。
+      await _ref.read(authRepositoryProvider).refreshAccess();
       final token = await _ref.read(secureStorageProvider).getToken();
       if (token == null) {
         state = state.copyWith(loading: false, error: '未登录，请先登录');
         return;
       }
 
-      // 后端路由为 /ws/terminal（无路径参数），会话由服务端连接时自动创建
-      final wsUrl = '${config.wsUrl}/ws/terminal';
       final wsClient = _ref.read(wsClientProvider);
-
-      wsClient.connect(wsUrl, token);
+      wsClient.connect('${config.wsUrl}/ws/terminal', token);
 
       _subscription = wsClient.stream.listen(
         (msg) {
           final type = msg['type'] as String?;
           if (type == 'output') {
-            final data = msg['data'] as String? ?? '';
-            // PTY 原始输出含 ANSI 转义序列，行式展示前剥离（色彩/光标控制等）；
-            // CRLF 规范为 LF、剔除残留 CR——Flutter 文本布局把 CR 当强制换行，
-            // 残留会让每行后多渲染一个空行（表现为行距异常大）
-            final clean =
-                _stripAnsi(data).replaceAll('\r\n', '\n').replaceAll('\r', '');
-            if (clean.isEmpty) return;
-            final merged = state.lines.toList();
-            if (merged.isNotEmpty) {
-              merged.last = merged.last + clean;
-            } else {
-              merged.add(clean);
-            }
-            // 换行符切分新行
-            final parts = merged.last.split('\n');
-            if (parts.length > 1) {
-              merged.removeLast();
-              merged.addAll(parts);
-            }
-            state = state.copyWith(lines: merged);
+            // PTY 原始输出（含 ANSI 序列）直接进模拟器，由 xterm 解析
+            // 光标移动/清屏/颜色，top、vim 等全屏程序可正常重绘
+            terminal.write(msg['data'] as String? ?? '');
           } else if (type == 'exit') {
-            state = state.copyWith(
-                connected: false, lines: [...state.lines, '', '--- 会话已结束 ---']);
+            terminal.write('\r\n\x1b[90m--- 会话已结束 ---\x1b[0m\r\n');
+            state = state.copyWith(connected: false);
           }
         },
         onError: (e) {
@@ -92,8 +80,11 @@ class TerminalNotifier extends StateNotifier<TerminalState> {
         },
       );
 
-      state =
-          state.copyWith(connected: true, loading: false, lines: ['终端已连接', '']);
+      // 复位本地视图：RIS 全复位 + 清屏 + 光标归位
+      terminal.write('\x1bc\x1b[2J\x1b[H');
+      state = state.copyWith(connected: true, loading: false, error: null);
+      // 握手后同步一次当前视图尺寸，避免 PTY 停留在默认 80x24
+      _sendResize(terminal.viewWidth, terminal.viewHeight);
     } catch (e) {
       state = state.copyWith(loading: false, error: '连接失败: $e');
     }
@@ -103,30 +94,20 @@ class TerminalNotifier extends StateNotifier<TerminalState> {
     _subscription?.cancel();
     _subscription = null;
     _ref.read(wsClientProvider).disconnect();
-    state =
-        state.copyWith(connected: false, lines: [...state.lines, '', '已断开连接']);
+    state = state.copyWith(connected: false);
   }
 
-  void sendCommand(String cmd) {
+  void _sendRaw(String data) {
     if (!state.connected) return;
-    // PTY（bash）会把输入回显到输出流，本地不再重复回显，否则命令显示两遍
-    _ref.read(wsClientProvider).send({'type': 'input', 'data': '$cmd\r'});
+    _ref.read(wsClientProvider).send({'type': 'input', 'data': data});
   }
 
-  void clear() {
-    state = state.copyWith(lines: []);
+  void _sendResize(int cols, int rows) {
+    if (!state.connected) return;
+    _ref
+        .read(wsClientProvider)
+        .send({'type': 'resize', 'cols': cols, 'rows': rows});
   }
-
-  // 剥离 ANSI/VT 转义序列（CSI/OSC 等），行式终端仅展示纯文本。
-  // 转义必须写成 \x1B/\x07 交由正则引擎解析——此前版本把真实 ESC 字节
-  // 直接嵌进 raw 字符串并用 \a 缩写，该 pattern 在 web 端（JS RegExp）
-  // 无法编译，导致 _stripAnsi 每次调用抛异常、终端输出全部丢失。
-  static final _ansiRe = RegExp(
-    r'\x1B\[[0-9;?]*[ -/]*[@-~]' // CSI 序列（颜色/光标控制）
-    r'|\x1B\][^\x07]*(\x07|\x1B\\)' // OSC 序列（标题等，BEL 或 ST 结尾）
-    r'|\x1B[@-Z\\-_]', // 其余单字符转义
-  );
-  String _stripAnsi(String s) => s.replaceAll(_ansiRe, '');
 
   @override
   void dispose() {

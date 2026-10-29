@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:xterm/xterm.dart';
+
 import '../../providers/terminal_provider.dart';
 
+/// Web 终端：xterm 全仿真视图 + 常用控制键工具条（软键盘没有 Ctrl 键）
 class TerminalTab extends ConsumerStatefulWidget {
   const TerminalTab({super.key});
   @override
@@ -9,40 +12,24 @@ class TerminalTab extends ConsumerStatefulWidget {
 }
 
 class _TerminalTabState extends ConsumerState<TerminalTab> {
-  final _inputController = TextEditingController();
-  final _scrollController = ScrollController();
-
-  @override
-  void dispose() {
-    _inputController.dispose();
-    _scrollController.dispose();
-    super.dispose();
-  }
-
-  void _executeCommand() {
-    final cmd = _inputController.text.trim();
-    if (cmd.isEmpty) return;
-    ref.read(terminalProvider.notifier).sendCommand(cmd);
-    _inputController.clear();
-    _scrollToBottom();
-  }
-
-  void _scrollToBottom() {
-    Future.delayed(const Duration(milliseconds: 100), () {
-      if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOut,
-        );
-      }
-    });
-  }
+  /// 控制键/方向键：软键盘没有 Ctrl 键，经 Terminal.keyInput 生成
+  /// 正确的转义序列走 onOutput → WS → PTY
+  static const _ctrlKeys = <(String, TerminalKey, bool)>[
+    ('Ctrl+C', TerminalKey.keyC, true),
+    ('Ctrl+D', TerminalKey.keyD, true),
+    ('Ctrl+Z', TerminalKey.keyZ, true),
+    ('Ctrl+L', TerminalKey.keyL, true),
+    ('Esc', TerminalKey.escape, false),
+    ('Tab', TerminalKey.tab, false),
+    ('↑', TerminalKey.arrowUp, false),
+    ('↓', TerminalKey.arrowDown, false),
+  ];
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final terminal = ref.watch(terminalProvider);
+    final state = ref.watch(terminalProvider);
+    final notifier = ref.read(terminalProvider.notifier);
 
     return Column(
       children: [
@@ -55,100 +42,98 @@ class _TerminalTabState extends ConsumerState<TerminalTab> {
                   width: 8,
                   height: 8,
                   decoration: BoxDecoration(
-                      color: terminal.connected ? Colors.green : Colors.orange,
+                      color: state.connected ? Colors.green : Colors.orange,
                       shape: BoxShape.circle)),
               const SizedBox(width: 8),
-              Text(terminal.connected ? '已连接' : '未连接',
+              Text(state.connected ? '已连接' : '未连接',
                   style: theme.textTheme.bodySmall),
               const Spacer(),
               IconButton(
-                icon: Icon(terminal.connected ? Icons.link_off : Icons.link,
+                icon: Icon(state.connected ? Icons.link_off : Icons.link,
                     size: 18),
                 onPressed: () {
-                  if (terminal.connected) {
-                    ref.read(terminalProvider.notifier).disconnect();
+                  if (state.connected) {
+                    notifier.disconnect();
                   } else {
-                    ref.read(terminalProvider.notifier).connect();
+                    notifier.connect();
                   }
                 },
                 visualDensity: VisualDensity.compact,
-                tooltip: terminal.connected ? '断开' : '连接',
-              ),
-              IconButton(
-                icon: const Icon(Icons.delete_sweep, size: 18),
-                onPressed: () => ref.read(terminalProvider.notifier).clear(),
-                visualDensity: VisualDensity.compact,
-                tooltip: '清屏',
+                tooltip: state.connected ? '断开' : '连接',
               ),
             ],
           ),
         ),
-        if (terminal.error != null)
+        if (state.error != null)
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(8),
             color: Colors.red.shade900,
-            child: Text(terminal.error!,
+            child: Text(state.error!,
                 style: const TextStyle(color: Colors.white, fontSize: 12)),
           ),
         Expanded(
           child: Container(
             color: Colors.black,
-            child: ListView.builder(
-              controller: _scrollController,
-              padding: const EdgeInsets.all(12),
-              itemCount: terminal.lines.length,
-              itemBuilder: (context, index) {
-                final line = terminal.lines[index];
-                final isPrompt = line.startsWith('\$ ');
-                return Text(
-                  line,
-                  style: TextStyle(
-                    fontFamily: 'monospace',
-                    fontSize: 13,
-                    color: isPrompt ? Colors.greenAccent : Colors.grey.shade300,
-                    height: 1.25,
+            child: state.connected
+                ? TerminalView(
+                    notifier.terminal,
+                    autofocus: true,
+                    autoResize: true,
+                    textStyle: const TerminalStyle(fontSize: 13),
+                  )
+                : Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.terminal,
+                            size: 44, color: Colors.grey.shade600),
+                        const SizedBox(height: 12),
+                        Text('未连接服务器终端',
+                            style: theme.textTheme.bodyMedium
+                                ?.copyWith(color: Colors.grey)),
+                        const SizedBox(height: 12),
+                        FilledButton.icon(
+                          onPressed:
+                              state.loading ? null : () => notifier.connect(),
+                          icon: state.loading
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2))
+                              : const Icon(Icons.link),
+                          label: const Text('连接终端'),
+                        ),
+                      ],
+                    ),
                   ),
-                );
-              },
+          ),
+        ),
+        if (state.connected)
+          Container(
+            color: Colors.grey.shade900,
+            height: 40,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              children: [
+                for (final entry in _ctrlKeys)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 2),
+                    child: ActionChip(
+                      label: Text(entry.$1,
+                          style: const TextStyle(
+                              fontSize: 12, color: Colors.white)),
+                      backgroundColor: Colors.grey.shade800,
+                      side: BorderSide.none,
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () =>
+                          notifier.terminal.keyInput(entry.$2, ctrl: entry.$3),
+                    ),
+                  ),              ],
             ),
           ),
-        ),
-        Container(
-          color: Colors.grey.shade900,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-          child: Row(
-            children: [
-              const Text('\$ ',
-                  style: TextStyle(
-                      fontFamily: 'monospace',
-                      color: Colors.greenAccent,
-                      fontSize: 14)),
-              Expanded(
-                child: TextField(
-                  controller: _inputController,
-                  style: const TextStyle(
-                      fontFamily: 'monospace',
-                      color: Colors.white,
-                      fontSize: 14),
-                  decoration: const InputDecoration(
-                    border: InputBorder.none,
-                    isDense: true,
-                    contentPadding: EdgeInsets.symmetric(vertical: 8),
-                  ),
-                  enabled: terminal.connected,
-                  onSubmitted: (_) => _executeCommand(),
-                ),
-              ),
-              IconButton(
-                icon:
-                    const Icon(Icons.send, size: 18, color: Colors.greenAccent),
-                onPressed: terminal.connected ? _executeCommand : null,
-                visualDensity: VisualDensity.compact,
-              ),
-            ],
-          ),
-        ),
       ],
     );
   }
