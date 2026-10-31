@@ -179,7 +179,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                           style: const TextStyle(fontSize: 14),
                         ),
                         subtitle: Text(
-                          '${s['ip'] ?? '-'} · ${clientType.toUpperCase()} · 登录 ${_fmtTime(s['login_at'] as String?)}',
+                          '${s['ip'] ?? '-'} · ${clientType.toUpperCase()} · 最近活动 ${_fmtTime(s['login_at'] as String?)}',
                           style: const TextStyle(fontSize: 12),
                         ),
                         trailing: isCurrent
