@@ -162,7 +162,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   else
                     ..._sessions.map((s) {
                       final isCurrent = s['is_current'] == true;
-                      final token = (s['token'] as String? ?? '');
+                      final sessionId = (s['id'] as String? ?? '');
                       final clientType = s['client_type'] as String? ?? '';
                       final deviceIcon = clientType == 'mobile'
                           ? Icons.smartphone
@@ -187,7 +187,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                             : IconButton(
                                 icon: const Icon(Icons.logout, size: 18),
                                 tooltip: '踢出',
-                                onPressed: () => _kickSession(token),
+                                onPressed: () => _kickSession(sessionId),
                               ),
                       );
                     }),

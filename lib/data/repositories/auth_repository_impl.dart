@@ -161,8 +161,8 @@ class AuthRepositoryImpl implements AuthRepository {
   }
 
   @override
-  Future<void> kickSession(String token) async {
-    await _api.post('/auth/sessions/kick', data: {'token': token});
+  Future<void> kickSession(String sessionId) async {
+    await _api.post('/auth/sessions/kick', data: {'id': sessionId});
   }
 
   @override
