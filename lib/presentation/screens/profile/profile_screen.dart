@@ -164,7 +164,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       final isCurrent = s['is_current'] == true;
                       final sessionId = (s['id'] as String? ?? '');
                       final clientType = s['client_type'] as String? ?? '';
-                      final deviceIcon = clientType == 'mobile'
+                      // 直连会话由设备签名自动续期（15 分钟滚动），踢出会被
+                      // 后端拒绝；断开走「服务器配置」里的直连开关或吊销设备
+                      final isDirect = clientType == 'mobile-direct';
+                      final typeLabel = clientType == 'mobile-direct'
+                          ? '移动端（直连）'
+                          : clientType.toUpperCase();
+                      final deviceIcon = clientType == 'mobile' ||
+                              clientType == 'mobile-direct'
                           ? Icons.smartphone
                           : clientType == 'web'
                               ? Icons.computer
@@ -179,10 +186,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                           style: const TextStyle(fontSize: 14),
                         ),
                         subtitle: Text(
-                          '${s['ip'] ?? '-'} · ${clientType.toUpperCase()} · 最近活动 ${_fmtTime(s['login_at'] as String?)}',
+                          '${s['ip'] ?? '-'} · $typeLabel · 最近活动 ${_fmtTime(s['login_at'] as String?)}',
                           style: const TextStyle(fontSize: 12),
                         ),
-                        trailing: isCurrent
+                        trailing: isCurrent || isDirect
                             ? null
                             : IconButton(
                                 icon: const Icon(Icons.logout, size: 18),
