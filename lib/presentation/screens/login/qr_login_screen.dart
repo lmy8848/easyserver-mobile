@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
@@ -11,10 +12,18 @@ class QRLoginScreen extends ConsumerStatefulWidget {
   ConsumerState<QRLoginScreen> createState() => _QRLoginScreenState();
 }
 
-class _QRLoginScreenState extends ConsumerState<QRLoginScreen> {
+class _QRLoginScreenState extends ConsumerState<QRLoginScreen>
+    with SingleTickerProviderStateMixin {
   MobileScannerController? _controller;
   bool _processing = false;
   bool _loggedIn = false;
+  bool _succeeded = false;
+
+  /// 扫描线动画：往复扫过取景框，给"正在扫描"的持续反馈
+  late final AnimationController _scanLine = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1800),
+  )..repeat(reverse: true);
 
   @override
   void initState() {
@@ -34,6 +43,7 @@ class _QRLoginScreenState extends ConsumerState<QRLoginScreen> {
 
   @override
   void dispose() {
+    _scanLine.dispose();
     _controller?.dispose();
     super.dispose();
   }
@@ -45,6 +55,8 @@ class _QRLoginScreenState extends ConsumerState<QRLoginScreen> {
     if (raw == null || !raw.startsWith('esqr:')) return;
 
     _processing = true;
+    HapticFeedback.mediumImpact(); // 识别到二维码的即时触觉反馈
+    if (mounted) setState(() {});
     final token = raw.substring(5);
     _confirmQR(token);
   }
@@ -54,20 +66,69 @@ class _QRLoginScreenState extends ConsumerState<QRLoginScreen> {
       final repo = ref.read(authRepositoryProvider);
       await repo.confirmQrLogin(qrToken);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text('扫码登录授权成功'), backgroundColor: Colors.green),
-        );
-        context.pop();
+        HapticFeedback.heavyImpact();
+        setState(() => _succeeded = true);
+        await Future<void>.delayed(const Duration(milliseconds: 900));
+        if (mounted) context.pop();
       }
     } catch (e) {
       _processing = false;
       if (mounted) {
+        setState(() {}); // 恢复扫描线与提示
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('授权失败: $e'), backgroundColor: Colors.red),
         );
       }
     }
+  }
+
+  /// 取景框 + 四角括号 + 扫描线
+  Widget _buildScanFrame() {
+    return AnimatedBuilder(
+      animation: _scanLine,
+      builder: (context, _) {
+        final size = MediaQuery.of(context).size;
+        final frameSize = size.width * 0.72;
+        final top = (size.height - frameSize) / 2 - 60;
+        final lineY = top + frameSize * _scanLine.value;
+        return Stack(
+          children: [
+            // 四角括号
+            Positioned(
+              left: (size.width - frameSize) / 2,
+              top: top,
+              child: SizedBox(
+                width: frameSize,
+                height: frameSize,
+                child: CustomPaint(painter: _FrameCornerPainter()),
+              ),
+            ),
+            // 扫描线（授权中停住淡出，成功态由对勾替代）
+            if (!_processing)
+              Positioned(
+                left: (size.width - frameSize) / 2 + 12,
+                width: frameSize - 24,
+                top: lineY,
+                child: Container(
+                  height: 2.5,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(colors: [
+                      Colors.greenAccent.withValues(alpha: 0),
+                      Colors.greenAccent,
+                      Colors.greenAccent.withValues(alpha: 0),
+                    ]),
+                    boxShadow: [
+                      BoxShadow(
+                          color: Colors.greenAccent.withValues(alpha: 0.6),
+                          blurRadius: 8),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
+    );
   }
 
   @override
@@ -120,17 +181,66 @@ class _QRLoginScreenState extends ConsumerState<QRLoginScreen> {
                     );
                   },
                 ),
+                _buildScanFrame(),
+                // 识别/授权中的状态提示
                 if (_processing)
-                  const Center(child: CircularProgressIndicator()),
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 120,
+                    child: Center(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 18, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: Colors.black87,
+                          borderRadius: BorderRadius.circular(24),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2, color: Colors.greenAccent),
+                            ),
+                            SizedBox(width: 10),
+                            Text('已识别，正在授权…',
+                                style: TextStyle(
+                                    color: Colors.white, fontSize: 14)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                // 成功反馈：绿色对勾
+                if (_succeeded)
+                  Positioned(
+                    left: (MediaQuery.of(context).size.width - 96) / 2,
+                    top: MediaQuery.of(context).size.height / 2 - 110,
+                    child: Container(
+                      width: 96,
+                      height: 96,
+                      decoration: const BoxDecoration(
+                        color: Colors.green,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.check_rounded,
+                          color: Colors.white, size: 56),
+                    ),
+                  ),
                 Positioned(
                   left: 0,
                   right: 0,
                   bottom: 80,
                   child: Text(
-                    '扫描 EasyServer Web 面板上的二维码，授权该浏览器登录',
+                    _processing
+                        ? '已识别二维码，正在授权该浏览器登录'
+                        : '对准 Web 面板上的二维码即可自动扫描',
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.8),
+                        color: Colors.white.withValues(alpha: 0.85),
                         fontSize: 14),
                   ),
                 ),
@@ -166,4 +276,35 @@ class _QRLoginScreenState extends ConsumerState<QRLoginScreen> {
             ),
     );
   }
+}
+
+/// 扫描框四角括号
+class _FrameCornerPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.greenAccent
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 4
+      ..strokeCap = StrokeCap.round;
+    const r = 12.0;
+
+    final path = Path()
+      ..moveTo(0, r)
+      ..lineTo(0, 0)
+      ..lineTo(r, 0)
+      ..moveTo(size.width - r, 0)
+      ..lineTo(size.width, 0)
+      ..lineTo(size.width, r)
+      ..moveTo(size.width, size.height - r)
+      ..lineTo(size.width, size.height)
+      ..lineTo(size.width - r, size.height)
+      ..moveTo(r, size.height)
+      ..lineTo(0, size.height)
+      ..lineTo(0, size.height - r);
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
