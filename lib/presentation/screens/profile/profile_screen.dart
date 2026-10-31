@@ -465,6 +465,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   String _clientHint(String? ua) {
     if (ua == null) return '未知客户端';
+    if (ua.contains('EasyServerMobile')) return 'App';
     if (ua.contains('Dart') || ua.contains('dart')) return '移动端';
     if (ua.contains('Mobile')) return '移动浏览器';
     return 'Web 浏览器';

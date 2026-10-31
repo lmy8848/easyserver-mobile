@@ -17,10 +17,19 @@ class ApiClient {
       connectTimeout: const Duration(seconds: 10),
       receiveTimeout: const Duration(seconds: 30),
       sendTimeout: const Duration(seconds: 30),
+      // 默认 UA 是 "Dart/x.y (dart:io)"——会话列表/审计里毫无辨识度；
+      // 启动后由 setUserAgent 覆盖为含机型与版本的完整标识
+      headers: {'User-Agent': 'EasyServerMobile'},
     ));
     _token = token;
     _primaryBaseUrl = '$baseUrl/api';
     _setupInterceptors();
+  }
+
+  /// 设置完整 User-Agent（含 App 版本与设备型号），如
+  /// "EasyServerMobile/1.0.1 (M2012K11C / Android 14)"。
+  void setUserAgent(String ua) {
+    _dio.options.headers['User-Agent'] = ua;
   }
 
   /// 单飞刷新：并发 401 只触发一次 refresh，其余请求等待同一结果。
