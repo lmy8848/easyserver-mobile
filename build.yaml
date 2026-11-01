@@ -1,0 +1,11 @@
+# 代码生成只针对 lib/：测试文件无注解类，不需要生成动作，
+# 且在新版 SDK 的分析器上有卡死问题（CI 实测 331/347 后挂起）
+targets:
+  $default:
+    builders:
+      json_serializable:
+        generate_for:
+          - lib/**
+      freezed:
+        generate_for:
+          - lib/**
